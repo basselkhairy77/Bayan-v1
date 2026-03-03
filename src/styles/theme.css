@@ -1,0 +1,169 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 16px;
+  --background: #FAF6F1;
+  --foreground: #3D2B1F;
+  --card: #FFFFFF;
+  --card-foreground: #3D2B1F;
+  --popover: #FFFFFF;
+  --popover-foreground: #3D2B1F;
+  --primary: #7C5C42;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F5EDE3;
+  --secondary-foreground: #5C4433;
+  --muted: #EDE5DA;
+  --muted-foreground: #8B7355;
+  --accent: #2D6B4A;
+  --accent-foreground: #FFFFFF;
+  --destructive: #B84233;
+  --destructive-foreground: #FFFFFF;
+  --border: #E0D5C8;
+  --input: transparent;
+  --input-background: #F5EDE3;
+  --switch-background: #D4C9BC;
+  --font-weight-medium: 600;
+  --font-weight-normal: 400;
+  --ring: #7C5C42;
+  --chart-1: #7C5C42;
+  --chart-2: #2D6B4A;
+  --chart-3: #C4A35A;
+  --chart-4: #8B9A6B;
+  --chart-5: #A07D5A;
+  --radius: 0.75rem;
+  --sidebar: #FAF6F1;
+  --sidebar-foreground: #3D2B1F;
+  --sidebar-primary: #7C5C42;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F5EDE3;
+  --sidebar-accent-foreground: #3D2B1F;
+  --sidebar-border: #E0D5C8;
+  --sidebar-ring: #7C5C42;
+
+  /* Islamic design tokens */
+  --surface-warm: #FFF9F3;
+  --surface-elevated: #FFFFFF;
+  --divider: #E8DFD1;
+  --accent-gold: #C4A35A;
+  --accent-green: #2D6B4A;
+  --accent-olive: #8B9A6B;
+  --text-primary: #3D2B1F;
+  --text-secondary: #8B7355;
+  --text-tertiary: #B0A090;
+  --primary-light: #A07D5A;
+  --primary-dark: #5C4030;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-surface-warm: var(--surface-warm);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-divider: var(--divider);
+  --color-accent-gold: var(--accent-gold);
+  --color-accent-green: var(--accent-green);
+  --color-accent-olive: var(--accent-olive);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Cairo', 'Noto Naskh Arabic', sans-serif;
+  }
+
+  html {
+    font-size: var(--font-size);
+  }
+
+  h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+    font-family: 'Cairo', sans-serif;
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+    font-family: 'Cairo', sans-serif;
+  }
+
+  h3 {
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+    font-family: 'Cairo', sans-serif;
+  }
+
+  h4 {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+    font-family: 'Cairo', sans-serif;
+  }
+
+  label {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  button {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  input {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 1.5;
+  }
+}
