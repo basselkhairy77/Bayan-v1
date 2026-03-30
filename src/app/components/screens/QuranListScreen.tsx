@@ -4,6 +4,24 @@ import { ChevronLeft, Bookmark, Search, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { FadeIn } from "../ui/FadeIn";
 
+const surahStartPages: Record<number, number> = {
+  1:1, 2:2, 3:50, 4:77, 5:106, 6:128, 7:151, 8:177, 9:187, 10:208,
+  11:221, 12:235, 13:249, 14:255, 15:262, 16:267, 17:282, 18:293,
+  19:305, 20:312, 21:322, 22:332, 23:342, 24:350, 25:359, 26:367,
+  27:377, 28:385, 29:396, 30:404, 31:411, 32:415, 33:418, 34:428,
+  35:434, 36:440, 37:446, 38:453, 39:458, 40:467, 41:477, 42:483,
+  43:489, 44:496, 45:499, 46:502, 47:507, 48:511, 49:515, 50:518,
+  51:520, 52:523, 53:526, 54:528, 55:531, 56:534, 57:537, 58:542,
+  59:545, 60:549, 61:551, 62:553, 63:554, 64:556, 65:558, 66:560,
+  67:562, 68:564, 69:566, 70:568, 71:570, 72:572, 73:574, 74:575,
+  75:577, 76:578, 77:580, 78:582, 79:583, 80:585, 81:586, 82:587,
+  83:587, 84:589, 85:590, 86:591, 87:591, 88:592, 89:593, 90:594,
+  91:595, 92:595, 93:596, 94:596, 95:597, 96:597, 97:598, 98:598,
+  99:599, 100:599, 101:600, 102:600, 103:601, 104:601, 105:601,
+  106:602, 107:602, 108:602, 109:603, 110:603, 111:603, 112:604,
+  113:604, 114:604
+};
+
 interface Surah {
   id: number;
   name: string;
@@ -102,22 +120,35 @@ export function QuranListScreen() {
       <FadeIn delay={0.06}>
         <div className="px-4 py-3">
           <div className="bg-primary rounded-2xl p-4 flex items-center justify-between">
-            <div className="relative w-14 h-14">
-              <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
-                <circle cx="28" cy="28" r="24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="4" />
-                <circle
-                  cx="28" cy="28" r="24" fill="none" stroke="#FFFFFF" strokeWidth="4"
-                  strokeLinecap="round"
-                  strokeDasharray={`${2 * Math.PI * 24 * 0.16} ${2 * Math.PI * 24 * 0.84}`}
-                />
-              </svg>
-              <span className="absolute inset-0 flex items-center justify-center text-sm text-white" style={{ fontWeight: 600 }}>
-                ٢٠٪
-              </span>
-            </div>
             <div className="text-right">
-              <h3 className="text-white font-['Cairo']">معدل الختم</h3>
-              <p className="text-white/70 text-sm mt-0.5">صفحة ٩٥ من ٦٠٤</p>
+              <h3 className="text-white font-['Cairo']">معدل الختمة</h3>
+              <p className="text-white/70 text-sm mt-0.5">
+                صفحة {toArabicNum(savedBookmark?.page || 0)} من {toArabicNum(604)}
+              </p>
+            </div>
+            <div className="relative w-14 h-14">
+              {(() => {
+                const page = savedBookmark?.page || 0;
+                const total = 604;
+                const pct = Math.round((page / total) * 100);
+                const r = 24;
+                const circ = 2 * Math.PI * r;
+                return (
+                  <>
+                    <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+                      <circle cx="28" cy="28" r={r} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="4" />
+                      <circle
+                        cx="28" cy="28" r={r} fill="none" stroke="#FFFFFF" strokeWidth="4"
+                        strokeLinecap="round"
+                        strokeDasharray={`${circ * (pct / 100)} ${circ * (1 - pct / 100)}`}
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-sm text-white" style={{ fontWeight: 600 }}>
+                      {toArabicNum(pct)}٪
+                    </span>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -177,7 +208,7 @@ export function QuranListScreen() {
             filteredSurahs.map((surah) => (
               <button
                 key={surah.id}
-                onClick={() => navigate(`/quran/${surah.id}?page=${surah.page}`)}
+                onClick={() => navigate(`/quran/${surah.id}?page=${surahStartPages[surah.id] || 1}`)}
                 dir="rtl"
                 className="w-full flex items-center justify-between py-3.5 border-b border-divider/60 transition-colors active:bg-secondary/50"
               >

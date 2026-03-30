@@ -1,6 +1,6 @@
 import { useParams, useNavigate, useSearchParams } from "react-router";
 import { ArrowLeft, Search, Bookmark, Grid3X3, ChevronLeft, ChevronRight, RefreshCw, FileText, Image as ImageIcon, Loader2 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { FadeIn } from "../ui/FadeIn";
 
 type ViewMode = "ayah" | "image";
@@ -70,6 +70,10 @@ export function QuranReadingScreen() {
   const [bookmarked, setBookmarked] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  const [showJumpSheet, setShowJumpSheet] = useState(false);
+  const [jumpInput, setJumpInput] = useState("");
+  const [jumpError, setJumpError] = useState(false);
+  const jumpInputRef = useRef<HTMLInputElement>(null);
 
   // Check bookmark
   const checkBookmark = useCallback((page: number) => {
@@ -154,6 +158,25 @@ export function QuranReadingScreen() {
     if (currentPage > 1) setCurrentPage((p) => p - 1);
   };
 
+  const handleJumpConfirm = () => {
+    const num = parseInt(jumpInput, 10);
+    if (isNaN(num) || num < 1 || num > TOTAL_PAGES) {
+      setJumpError(true);
+      return;
+    }
+    setCurrentPage(num);
+    setShowJumpSheet(false);
+    setJumpInput("");
+    setJumpError(false);
+  };
+
+  const openJumpSheet = () => {
+    setJumpInput("");
+    setJumpError(false);
+    setShowJumpSheet(true);
+    setTimeout(() => jumpInputRef.current?.focus(), 100);
+  };
+
   const headerName = surahGroups.map((g) => g.surahName).join(" – ");
 
   return (
@@ -184,11 +207,11 @@ export function QuranReadingScreen() {
       </FadeIn>
 
       {/* Navigation Bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-surface-elevated border-b border-divider">
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-divider py-3 px-6 flex items-center justify-between" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
         <button
-          className={`p-2 ${currentPage < TOTAL_PAGES ? "text-primary" : "text-text-tertiary/30"}`}
-          onClick={goNext}
-          disabled={currentPage >= TOTAL_PAGES}
+          className={`p-2 ${currentPage > 1 ? "text-primary" : "text-text-tertiary opacity-30 cursor-not-allowed pointer-events-none"}`}
+          onClick={goPrev}
+          disabled={currentPage <= 1}
         >
           <ChevronRight size={22} />
         </button>
@@ -201,15 +224,18 @@ export function QuranReadingScreen() {
         </button>
 
         <div className="text-center px-2">
-          <span className="text-sm text-text-secondary">
+          <button
+            onClick={openJumpSheet}
+            className="text-sm text-text-secondary underline underline-offset-4 decoration-text-tertiary/40 px-2 py-1 rounded-lg active:bg-secondary/50 transition-colors"
+          >
             {toArabicNum(currentPage)} / {toArabicNum(TOTAL_PAGES)}
-          </span>
+          </button>
         </div>
 
         <button
-          className={`p-2 ${currentPage > 1 ? "text-primary" : "text-text-tertiary/30"}`}
-          onClick={goPrev}
-          disabled={currentPage <= 1}
+          className={`p-2 ${currentPage < TOTAL_PAGES ? "text-primary" : "text-text-tertiary opacity-30 cursor-not-allowed pointer-events-none"}`}
+          onClick={goNext}
+          disabled={currentPage >= TOTAL_PAGES}
         >
           <ChevronLeft size={22} />
         </button>
@@ -242,7 +268,7 @@ export function QuranReadingScreen() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pb-24">
         {viewMode === "image" ? (
           /* ===== IMAGE MODE ===== */
           <div style={{ width: "100%", lineHeight: 0, fontSize: 0 }}>
@@ -303,8 +329,14 @@ export function QuranReadingScreen() {
               surahGroups.map((group, gi) => {
                 const isFirstSurah = group.surahNumber === 1;
                 const isTawbah = group.surahNumber === 9;
-                const showBismillah = !isFirstSurah && !isTawbah && group.ayahs[0]?.numberInSurah === 1;
                 const startsAtBeginning = group.ayahs[0]?.numberInSurah === 1;
+
+                const isBismillahAyah = (ayah: AyahData) =>
+                  ayah.numberInSurah === 1 &&
+                  !isTawbah &&
+                  (ayah.text.startsWith('بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ') ||
+                   ayah.text.startsWith('بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ') ||
+                   ayah.text.startsWith('بِسۡمِ ٱللَّهِ'));
 
                 return (
                   <div key={group.surahNumber} className="mb-6">
@@ -318,25 +350,15 @@ export function QuranReadingScreen() {
                       </FadeIn>
                     )}
 
-                    {showBismillah && (
-                      <FadeIn delay={0.04 * gi + 0.02} y={10}>
-                        <div className="bg-primary rounded-full py-3 px-6 mb-5">
-                          <p className="text-white text-center font-['Amiri'] text-xl" style={{ lineHeight: '2' }}>
-                            {BISMILLAH}
-                          </p>
-                        </div>
-                      </FadeIn>
-                    )}
-
                     {group.ayahs.map((ayah, ai) => {
-                      const isFatihaBismillah = isFirstSurah && ayah.numberInSurah === 1;
+                      const showAsBismillahCard = isBismillahAyah(ayah);
                       return (
                         <FadeIn key={ayah.number} delay={0.03 + (gi * 4 + ai) * 0.03} y={14}>
                           <div className="mb-2">
-                            {isFatihaBismillah ? (
-                              <div className="bg-primary rounded-full py-3 px-6 mb-4">
+                            {showAsBismillahCard ? (
+                              <div className="bg-primary rounded-2xl py-3 px-6 mb-4">
                                 <p className="text-white text-center font-['Amiri'] text-xl" style={{ lineHeight: '2' }}>
-                                  {ayah.text} ﴿{toArabicNum(ayah.numberInSurah)}﴾
+                                  {ayah.text} {isFirstSurah ? `﴿${toArabicNum(ayah.numberInSurah)}﴾` : ''}
                                 </p>
                               </div>
                             ) : (
@@ -358,6 +380,46 @@ export function QuranReadingScreen() {
           </div>
         )}
       </div>
+
+      {/* Page Jump Bottom Sheet */}
+      {showJumpSheet && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => { setShowJumpSheet(false); setJumpError(false); }}
+          />
+          <div
+            className="relative w-full max-w-md bg-background rounded-t-2xl p-6 animate-slide-up"
+            style={{ animation: "slideUp 0.25s ease-out" }}
+          >
+            <div className="flex justify-center mb-4">
+              <div className="w-10 h-1 rounded-full bg-divider" />
+            </div>
+            <h3 className="text-center text-text-primary font-['Cairo'] mb-4">انتقل إلى صفحة</h3>
+            <input
+              ref={jumpInputRef}
+              type="number"
+              min={1}
+              max={604}
+              value={jumpInput}
+              onChange={(e) => { setJumpInput(e.target.value); setJumpError(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleJumpConfirm(); }}
+              placeholder="رقم الصفحة (٢ - ٦٠٤)"
+              className="w-full bg-secondary rounded-xl p-3 text-right text-text-primary placeholder:text-text-tertiary outline-none focus:ring-2 focus:ring-primary/30"
+              dir="rtl"
+            />
+            {jumpError && (
+              <p className="text-red-500 text-xs text-right mt-1.5">يرجى إدخال رقم بين ٢ و ٦٠٤</p>
+            )}
+            <button
+              onClick={handleJumpConfirm}
+              className="w-full mt-4 bg-primary text-white rounded-xl py-3 font-['Cairo'] active:opacity-80 transition-opacity"
+            >
+              انتقل
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

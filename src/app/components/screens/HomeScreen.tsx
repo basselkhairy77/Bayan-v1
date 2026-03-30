@@ -176,16 +176,25 @@ export function HomeScreen() {
       const raw = (timings[p.key] || "00:00").split(" ")[0];
       const [h, m] = raw.split(":").map(Number);
       const totalMin = h * 60 + m;
-      const passed = totalMin <= nowMinutes;
+      const passed = totalMin < nowMinutes;
       const isNext = !foundNext && !passed;
       if (isNext) foundNext = true;
       return { name: p.name, key: p.key, time: formatTimeArabic(raw), icon: p.icon, passed: passed && !isNext, isNext, _raw: raw, _totalMin: totalMin };
     });
 
-    const next = list.find((p) => p.isNext) || null;
+    // If all prayers passed (after Isha), wrap to Fajr as next
+    let next = list.find((p) => p.isNext) || null;
+    if (!next) {
+      list.forEach((p) => { p.passed = true; p.isNext = false; });
+      list[0].isNext = true;
+      list[0].passed = false;
+      next = list[0];
+    }
+
     let cd = "";
     if (next) {
-      const diff = (next as any)._totalMin - nowMinutes;
+      let diff = (next as any)._totalMin - nowMinutes;
+      if (diff <= 0) diff += 24 * 60;
       const hrs = Math.floor(diff / 60);
       const mins = diff % 60;
       cd = hrs > 0 ? `بعد ${toArabicNum(hrs)} س ${toArabicNum(mins)} د` : `بعد ${toArabicNum(mins)} د`;
@@ -269,7 +278,7 @@ export function HomeScreen() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Sun size={16} className="text-primary" />
+                  {(() => { const Icon = nextPrayer?.icon || Sun; return <Icon size={16} className="text-primary" />; })()}
                 </div>
                 <div>
                   <p className="text-text-secondary text-xs">الصلاة القادمة</p>
