@@ -1,55 +1,75 @@
 import { useNavigate } from "react-router";
 import { AppBar } from "../AppBar";
-import { ChevronLeft, Bookmark, Search } from "lucide-react";
-import { useState } from "react";
+import { ChevronLeft, Bookmark, Search, RefreshCw } from "lucide-react";
+import { useState, useEffect } from "react";
 import { FadeIn } from "../ui/FadeIn";
 
-const surahs = [
-  { id: 1, name: "الفاتحة", verses: 7, type: "مكية", page: 1 },
-  { id: 2, name: "البقرة", verses: 286, type: "مدنية", page: 2 },
-  { id: 3, name: "آل عمران", verses: 200, type: "مدنية", page: 50 },
-  { id: 4, name: "النساء", verses: 176, type: "مدنية", page: 77 },
-  { id: 5, name: "المائدة", verses: 120, type: "مدنية", page: 106 },
-  { id: 6, name: "الأنعام", verses: 165, type: "مكية", page: 128 },
-  { id: 7, name: "الأعراف", verses: 206, type: "مكية", page: 151 },
-  { id: 8, name: "الأنفال", verses: 75, type: "مدنية", page: 177 },
-  { id: 9, name: "التوبة", verses: 129, type: "مدنية", page: 187 },
-  { id: 10, name: "يونس", verses: 109, type: "مكية", page: 208 },
-  { id: 11, name: "هود", verses: 123, type: "مكية", page: 221 },
-  { id: 12, name: "يوسف", verses: 111, type: "مكية", page: 235 },
-  { id: 13, name: "الرعد", verses: 43, type: "مدنية", page: 249 },
-  { id: 14, name: "إبراهيم", verses: 52, type: "مكية", page: 255 },
-  { id: 15, name: "الحجر", verses: 99, type: "مكية", page: 262 },
-  { id: 16, name: "النحل", verses: 128, type: "مكية", page: 267 },
-  { id: 17, name: "الإسراء", verses: 111, type: "مكية", page: 282 },
-  { id: 18, name: "الكهف", verses: 110, type: "مكية", page: 293 },
-  { id: 19, name: "مريم", verses: 98, type: "مكية", page: 305 },
-  { id: 20, name: "طه", verses: 135, type: "مكية", page: 312 },
-  { id: 21, name: "الأنبياء", verses: 112, type: "مكية", page: 322 },
-  { id: 22, name: "الحج", verses: 78, type: "مدنية", page: 332 },
-  { id: 23, name: "المؤمنون", verses: 118, type: "مكية", page: 342 },
-  { id: 24, name: "النور", verses: 64, type: "مدنية", page: 350 },
-  { id: 25, name: "الفرقان", verses: 77, type: "مكية", page: 359 },
-  { id: 26, name: "الشعراء", verses: 227, type: "مكية", page: 367 },
-  { id: 27, name: "النمل", verses: 93, type: "مكية", page: 377 },
-  { id: 28, name: "القصص", verses: 88, type: "مكية", page: 385 },
-  { id: 29, name: "العنكبوت", verses: 69, type: "مكية", page: 396 },
-  { id: 30, name: "الروم", verses: 60, type: "مكية", page: 404 },
-];
+interface Surah {
+  id: number;
+  name: string;
+  verses: number;
+  type: string;
+  page: number;
+}
 
-const bookmarks = [
-  { surah: "النساء", ayah: 1, page: 77 },
-  { surah: "الفاتحة", ayah: 1, page: 1 },
-];
+interface QuranBookmark {
+  surahNumber: number;
+  surahName: string;
+  page: number;
+  ayah: number;
+}
 
 const toArabicNum = (n: number): string => {
-  return n.toString().replace(/\d/g, (d) => '٠٢٣٤٥٦٧٨٩'[parseInt(d)]);
+  const digits = '\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669';
+  return n.toString().replace(/\d/g, (d) => digits[parseInt(d)]);
 };
 
 export function QuranListScreen() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [surahs, setSurahs] = useState<Surah[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [savedBookmark, setSavedBookmark] = useState<QuranBookmark | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("quranBookmark");
+      if (raw) setSavedBookmark(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  const fetchSurahs = async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await fetch("https://api.alquran.cloud/v1/surah");
+      const json = await res.json();
+      const refs = json.data as any[];
+      setSurahs(
+        refs.map((s) => ({
+          id: s.number,
+          name: (s.name as string)
+            .replace(/سُورَةُ\s*/g, '')
+            .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u08D3-\u08E1\u08E3-\u08FF\uFE70-\uFE7F]/g, '')
+            .replace(/ٱ/g, 'ا')
+            .trim(),
+          verses: s.numberOfAyahs,
+          type: s.revelationType === "Meccan" ? "مكية" : "مدنية",
+          page: s.page || s.number,
+        }))
+      );
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSurahs();
+  }, []);
 
   const filteredSurahs = searchQuery
     ? surahs.filter((s) => s.name.includes(searchQuery))
@@ -104,51 +124,78 @@ export function QuranListScreen() {
       </FadeIn>
 
       {/* Bookmarks */}
-      <FadeIn delay={0.12}>
-        <div className="px-4 mb-2">
-          <div className="flex gap-2 overflow-x-auto no-scrollbar">
-            {bookmarks.map((bm, i) => (
-              <div
-                key={i}
-                className="flex-shrink-0 bg-accent-green/10 border border-accent-green/20 rounded-xl px-4 py-2.5 flex items-center gap-3"
-              >
-                <Bookmark size={16} className="text-accent-green" />
-                <div>
-                  <p className="text-sm text-text-primary" style={{ fontWeight: 500 }}>{bm.surah}</p>
-                  <p className="text-xs text-text-secondary">
-                    آية {toArabicNum(bm.ayah)} · صفحة {toArabicNum(bm.page)}
-                  </p>
-                </div>
-                <span className="text-xs text-text-tertiary mr-2">الموضع المحفوظ · {toArabicNum(i + 1)}</span>
+      {savedBookmark && (
+        <FadeIn delay={0.12}>
+          <div className="px-4 mb-2">
+            <button
+              onClick={() => navigate(`/quran/${savedBookmark.surahNumber}?page=${savedBookmark.page}`)}
+              className="w-full bg-accent-gold/10 border border-accent-gold/20 rounded-xl px-4 py-2.5 flex items-center gap-3"
+            >
+              <Bookmark size={16} className="text-accent-gold" />
+              <div className="text-right">
+                <p className="text-sm text-text-primary" style={{ fontWeight: 500 }}>{savedBookmark.surahName}</p>
+                <p className="text-xs text-text-secondary">
+                  آية {toArabicNum(savedBookmark.ayah)} · صفحة {toArabicNum(savedBookmark.page)}
+                </p>
               </div>
-            ))}
+              <span className="text-xs text-text-tertiary mr-auto">الموضع المحفوظ</span>
+            </button>
           </div>
-        </div>
-      </FadeIn>
+        </FadeIn>
+      )}
 
       {/* Surah List */}
       <FadeIn delay={0.18}>
         <div className="px-4 mt-2">
-          {filteredSurahs.map((surah) => (
-            <button
-              key={surah.id}
-              onClick={() => navigate(`/quran/${surah.id}`)}
-              className="w-full flex items-center justify-between py-3.5 border-b border-divider/60 transition-colors active:bg-secondary/50"
-            >
-              <ChevronLeft size={18} className="text-text-tertiary" />
-              <div className="flex items-center gap-3 flex-1 justify-end">
-                <div className="text-right">
-                  <h4 className="text-text-primary font-['Cairo']">{surah.name}</h4>
-                  <p className="text-sm text-text-secondary">
-                    {surah.type} · {toArabicNum(surah.verses)} آيات
-                  </p>
+          {loading ? (
+            <div className="flex flex-col gap-1">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between py-3.5 border-b border-divider/60 animate-pulse" dir="rtl">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-secondary" />
+                    <div className="space-y-2">
+                      <div className="h-4 w-24 bg-secondary rounded" />
+                      <div className="h-3 w-16 bg-secondary rounded" />
+                    </div>
+                  </div>
+                  <div className="w-4 h-4 bg-secondary rounded" />
                 </div>
-                <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center">
-                  <span className="text-sm text-primary" style={{ fontWeight: 600 }}>{toArabicNum(surah.id)}</span>
+              ))}
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <p className="text-text-secondary text-sm">تعذّر تحميل قائمة السور</p>
+              <button
+                onClick={fetchSurahs}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm transition-colors active:opacity-80"
+              >
+                <RefreshCw size={16} />
+                إعادة المحاولة
+              </button>
+            </div>
+          ) : (
+            filteredSurahs.map((surah) => (
+              <button
+                key={surah.id}
+                onClick={() => navigate(`/quran/${surah.id}?page=${surah.page}`)}
+                dir="rtl"
+                className="w-full flex items-center justify-between py-3.5 border-b border-divider/60 transition-colors active:bg-secondary/50"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center">
+                    <span className="text-sm text-primary" style={{ fontWeight: 600 }}>{toArabicNum(surah.id)}</span>
+                  </div>
+                  <div className="text-right">
+                    <h4 className="text-text-primary font-['Cairo']">{surah.name}</h4>
+                    <p className="text-sm text-text-secondary text-right">
+                      {surah.type} - {toArabicNum(surah.verses)} آيات
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </button>
-          ))}
+                <ChevronLeft size={18} className="text-text-tertiary" />
+              </button>
+            ))
+          )}
         </div>
       </FadeIn>
     </div>

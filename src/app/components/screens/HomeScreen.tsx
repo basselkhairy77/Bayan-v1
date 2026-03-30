@@ -13,15 +13,40 @@ import {
 import { motion } from "motion/react";
 import { FadeIn } from "../ui/FadeIn";
 import { useMenu } from "../ui/MenuContext";
+import { useState, useEffect, useMemo } from "react";
 
-const prayerTimes = [
-  { name: "الفجر", time: "٤:٥٨", icon: Star, passed: true },
-  { name: "الشروق", time: "٦:١٧", icon: Sunrise, passed: true },
-  { name: "الظهر", time: "١٢:٠٩", icon: Sun, passed: true },
-  { name: "العصر", time: "٣:٢٤", icon: Sun, passed: false, isNext: true },
-  { name: "المغرب", time: "٥:٥٠", icon: Sunset, passed: false },
-  { name: "العشاء", time: "٧:١٢", icon: CloudMoon, passed: false },
+interface PrayerTimeEntry {
+  name: string;
+  key: string;
+  time: string;
+  icon: React.ElementType;
+  passed: boolean;
+  isNext: boolean;
+}
+
+const PRAYER_KEYS = [
+  { key: "Fajr", name: "الفجر", icon: Star },
+  { key: "Sunrise", name: "الشروق", icon: Sunrise },
+  { key: "Dhuhr", name: "الظهر", icon: Sun },
+  { key: "Asr", name: "العصر", icon: Sun },
+  { key: "Maghrib", name: "المغرب", icon: Sunset },
+  { key: "Isha", name: "العشاء", icon: CloudMoon },
 ];
+
+const toArabicNum = (n: number | string): string =>
+  n.toString().replace(/\d/g, (d) => '\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669'[parseInt(d)]);
+
+const formatTimeArabic = (time24: string): string => {
+  const [h, m] = time24.split(":").map(Number);
+  return `${toArabicNum(h > 12 ? h - 12 : h)}:${toArabicNum(m.toString().padStart(2, "0"))}`;
+};
+
+const formatTimeArabicWithPeriod = (time24: string): string => {
+  const [h, m] = time24.split(":").map(Number);
+  const period = h >= 12 ? "م" : "ص";
+  const h12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+  return `${toArabicNum(h12)}:${toArabicNum(m.toString().padStart(2, "0"))} ${period}`;
+};
 
 /* Decorative blob SVG for card backgrounds */
 function CardBlob({ color, opacity = 0.07 }: { color: string; opacity?: number }) {
@@ -53,7 +78,6 @@ function CardIllustration({
 }) {
   return (
     <div className="relative flex items-center justify-center">
-      {/* Decorative circles behind icon */}
       <div
         className="absolute w-16 h-16 rounded-full opacity-20"
         style={{ backgroundColor: accentColor }}
@@ -108,6 +132,67 @@ const quickCardData = [
 export function HomeScreen() {
   const navigate = useNavigate();
   const { isMenuOpen, toggleMenu } = useMenu();
+  const [timings, setTimings] = useState<Record<string, string> | null>(null);
+  const [tick, setTick] = useState(0);
+  const [hijriDate, setHijriDate] = useState("");
+  const [gregorianDate, setGregorianDate] = useState("");
+
+  useEffect(() => {
+    const fetchTimings = () => {
+      fetch("https://api.aladhan.com/v1/timingsByCity?city=cairo&country=egypt")
+        .then((r) => r.json())
+        .then((json) => {
+          if (json.code === 200) {
+            setTimings(json.data.timings);
+            const h = json.data.date.hijri;
+            const g = json.data.date.gregorian;
+            const dayAr = h.weekday.ar;
+            setHijriDate(`${dayAr} ${toArabicNum(h.day)} ${h.month.ar} ${toArabicNum(h.year)}`);
+            const months: Record<string, string> = {
+              January: "يناير", February: "فبراير", March: "مارس", April: "أبريل",
+              May: "مايو", June: "يونيو", July: "يوليو", August: "أغسطس",
+              September: "سبتمبر", October: "أكتوبر", November: "نوفمبر", December: "ديسمبر",
+            };
+            setGregorianDate(`${toArabicNum(g.day)} ${months[g.month.en] || g.month.en} ${toArabicNum(g.year)}`);
+          }
+        })
+        .catch(() => {});
+    };
+    fetchTimings();
+    const apiInterval = setInterval(fetchTimings, 5 * 60 * 1000);
+    const tickInterval = setInterval(() => setTick((t) => t + 1), 60 * 1000);
+    return () => { clearInterval(apiInterval); clearInterval(tickInterval); };
+  }, []);
+
+  const { prayerList, nextPrayer, countdown } = useMemo(() => {
+    void tick; // dependency to recalc every minute
+    if (!timings) return { prayerList: [] as PrayerTimeEntry[], nextPrayer: null as PrayerTimeEntry | null, countdown: "" };
+
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+    let foundNext = false;
+    const list: PrayerTimeEntry[] = PRAYER_KEYS.map((p) => {
+      const raw = (timings[p.key] || "00:00").split(" ")[0];
+      const [h, m] = raw.split(":").map(Number);
+      const totalMin = h * 60 + m;
+      const passed = totalMin <= nowMinutes;
+      const isNext = !foundNext && !passed;
+      if (isNext) foundNext = true;
+      return { name: p.name, key: p.key, time: formatTimeArabic(raw), icon: p.icon, passed: passed && !isNext, isNext, _raw: raw, _totalMin: totalMin };
+    });
+
+    const next = list.find((p) => p.isNext) || null;
+    let cd = "";
+    if (next) {
+      const diff = (next as any)._totalMin - nowMinutes;
+      const hrs = Math.floor(diff / 60);
+      const mins = diff % 60;
+      cd = hrs > 0 ? `بعد ${toArabicNum(hrs)} س ${toArabicNum(mins)} د` : `بعد ${toArabicNum(mins)} د`;
+    }
+
+    return { prayerList: list, nextPrayer: next, countdown: cd };
+  }, [timings, tick]);
 
   return (
     <div className="min-h-screen">
@@ -140,9 +225,9 @@ export function HomeScreen() {
             <div className="flex items-center justify-between mt-3 text-white/50 text-sm">
               <div className="flex items-center gap-2">
                 <Clock size={14} />
-                <span>الإثنين ٦ رمضان ١٤٤٧</span>
+                <span>{hijriDate}</span>
               </div>
-              <span>٢٣ فبراير ٢٠٢٦</span>
+              <span>{gregorianDate}</span>
             </div>
           </div>
         </div>
@@ -153,6 +238,34 @@ export function HomeScreen() {
         <div className="px-4 -mt-6">
           <div className="bg-surface-elevated rounded-2xl p-4 shadow-sm border border-divider/40">
             {/* Current/Next Prayer */}
+            {!timings ? (
+              <div className="animate-pulse">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-secondary" />
+                    <div className="space-y-1.5">
+                      <div className="h-3 w-16 bg-secondary rounded" />
+                      <div className="h-4 w-12 bg-secondary rounded" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 flex flex-col items-end">
+                    <div className="h-7 w-20 bg-secondary rounded" />
+                    <div className="h-3 w-14 bg-secondary rounded" />
+                  </div>
+                </div>
+                <div className="h-px bg-divider my-3" />
+                <div className="grid grid-cols-6 gap-1">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="flex flex-col items-center gap-1 py-2">
+                      <div className="w-4 h-4 bg-secondary rounded-full" />
+                      <div className="h-2.5 w-8 bg-secondary rounded" />
+                      <div className="h-3 w-10 bg-secondary rounded" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+            <>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
@@ -160,14 +273,14 @@ export function HomeScreen() {
                 </div>
                 <div>
                   <p className="text-text-secondary text-xs">الصلاة القادمة</p>
-                  <p className="text-text-primary text-sm" style={{ fontWeight: 600 }}>العصر</p>
+                  <p className="text-text-primary text-sm" style={{ fontWeight: 600 }}>{nextPrayer?.name || "العصر"}</p>
                 </div>
               </div>
               <div className="text-left">
                 <p className="text-2xl text-primary font-['Cairo'] tabular-nums" style={{ fontWeight: 700 }}>
-                  ٣:٢٤ م
+                  {nextPrayer ? formatTimeArabicWithPeriod((nextPrayer as any)._raw) : "..."}
                 </p>
-                <p className="text-text-tertiary text-xs">بعد ٢ س ٣ د</p>
+                <p className="text-text-tertiary text-xs">{countdown}</p>
               </div>
             </div>
 
@@ -176,7 +289,7 @@ export function HomeScreen() {
 
             {/* All Prayer Times */}
             <div className="grid grid-cols-6 gap-1">
-              {prayerTimes.map((prayer) => {
+              {prayerList.map((prayer) => {
                 const Icon = prayer.icon;
                 return (
                   <div
@@ -206,6 +319,8 @@ export function HomeScreen() {
                 );
               })}
             </div>
+            </>
+            )}
           </div>
         </div>
       </FadeIn>
