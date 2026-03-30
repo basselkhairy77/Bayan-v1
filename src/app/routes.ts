@@ -9,6 +9,7 @@ import { TasbeehScreen } from "./components/screens/TasbeehScreen";
 import { HadithScreen } from "./components/screens/HadithScreen";
 import { LibraryScreen } from "./components/screens/LibraryScreen";
 import { SadqaScreen } from "./components/screens/SadqaScreen";
+import { SunnahTrackerScreen } from "./components/screens/SunnahTrackerScreen";
 
 export const router = createBrowserRouter([
   {
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
       { path: "tasbeeh", Component: TasbeehScreen },
       { path: "hadith", Component: HadithScreen },
       { path: "library", Component: LibraryScreen },
+      { path: "sunnah", Component: SunnahTrackerScreen },
       { path: "sadqa", Component: SadqaScreen },
       { path: "*", loader: () => redirect("/") },
     ],

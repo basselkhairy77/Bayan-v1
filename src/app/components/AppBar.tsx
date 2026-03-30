@@ -1,10 +1,11 @@
-import { Menu as MenuIcon, ArrowRight, Search } from "lucide-react";
+import { Menu as MenuIcon, ArrowRight, ArrowLeft, Search } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useMenu } from "./ui/MenuContext";
 
 interface AppBarProps {
   title: string;
   showBack?: boolean;
+  backDirection?: "left" | "right";
   showMenu?: boolean;
   showSearch?: boolean;
   onSearch?: () => void;
@@ -14,6 +15,7 @@ interface AppBarProps {
 export function AppBar({
   title,
   showBack = false,
+  backDirection = "right",
   showMenu = false,
   showSearch = false,
   onSearch,
@@ -46,12 +48,20 @@ export function AppBar({
         <h2 className={`flex-1 text-center font-['Cairo'] ${titleClass}`}>{title}</h2>
 
         <div className="flex items-center gap-1 min-w-[40px] justify-end">
-          {showBack && (
+          {showBack && backDirection === "right" && (
             <button
               className={`p-1.5 rounded-full transition-colors ${iconClass}`}
               onClick={() => navigate(-1)}
             >
               <ArrowRight size={20} />
+            </button>
+          )}
+          {showBack && backDirection === "left" && (
+            <button
+              className={`p-1.5 rounded-full transition-colors ${iconClass}`}
+              onClick={() => navigate(-1)}
+            >
+              <ArrowLeft size={20} />
             </button>
           )}
           {showMenu && (

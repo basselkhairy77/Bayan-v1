@@ -101,7 +101,7 @@ const quickCardData = [
     label: "سنن العبادات",
     subtitle: "تعرف على سنن النبي ﷺ",
     icon: Star,
-    path: "/quran",
+    path: "/sunnah",
     bgColor: "#F2F5EC",
     blobColor: "#2D6B4A",
     accentColor: "#2D6B4A",

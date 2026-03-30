@@ -19,8 +19,8 @@ const navItems: {
 }[] = [
   { path: "/", label: "الرئيسية", icon: House },
   { path: "/quran", label: "القرآن", icon: BookOpenText },
-  { path: "/library", label: "المكتبة", icon: SquaresFour },
   { path: "/adhkar", label: "أذكار", icon: MoonStars },
+  { path: "/library", label: "المكتبة", icon: SquaresFour },
   { path: "/sadqa", label: "صدقة جارية", icon: HeartStraight },
 ];
 
@@ -173,7 +173,8 @@ function LayoutInner() {
 
   const isReadingScreen = location.pathname.startsWith("/quran/");
   const isDetailScreen = location.pathname.startsWith("/adhkar/");
-  const isSubScreen = isReadingScreen || isDetailScreen;
+  const isSunnahScreen = location.pathname === "/sunnah";
+  const isSubScreen = isReadingScreen || isDetailScreen || isSunnahScreen;
 
   const handleNavigate = useCallback(
     (path: string) => {
