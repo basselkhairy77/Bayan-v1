@@ -136,30 +136,65 @@ export function HomeScreen() {
   const [tick, setTick] = useState(0);
   const [hijriDate, setHijriDate] = useState("");
   const [gregorianDate, setGregorianDate] = useState("");
+  const [locationName, setLocationName] = useState("");
 
   useEffect(() => {
-    const fetchTimings = () => {
-      fetch("https://api.aladhan.com/v1/timingsByCity?city=cairo&country=egypt")
-        .then((r) => r.json())
-        .then((json) => {
-          if (json.code === 200) {
-            setTimings(json.data.timings);
-            const h = json.data.date.hijri;
-            const g = json.data.date.gregorian;
-            const dayAr = h.weekday.ar;
-            setHijriDate(`${dayAr} ${toArabicNum(h.day)} ${h.month.ar} ${toArabicNum(h.year)}`);
-            const months: Record<string, string> = {
-              January: "يناير", February: "فبراير", March: "مارس", April: "أبريل",
-              May: "مايو", June: "يونيو", July: "يوليو", August: "أغسطس",
-              September: "سبتمبر", October: "أكتوبر", November: "نوفمبر", December: "ديسمبر",
-            };
-            setGregorianDate(`${toArabicNum(g.day)} ${months[g.month.en] || g.month.en} ${toArabicNum(g.year)}`);
-          }
-        })
-        .catch(() => {});
+    const handleResponse = (json: any) => {
+      if (json.code === 200) {
+        setTimings(json.data.timings);
+        const h = json.data.date.hijri;
+        const g = json.data.date.gregorian;
+        const dayAr = h.weekday.ar;
+        setHijriDate(`${dayAr} ${toArabicNum(h.day)} ${h.month.ar} ${toArabicNum(h.year)}`);
+        const months: Record<string, string> = {
+          January: "يناير", February: "فبراير", March: "مارس", April: "أبريل",
+          May: "مايو", June: "يونيو", July: "يوليو", August: "أغسطس",
+          September: "سبتمبر", October: "أكتوبر", November: "نوفمبر", December: "ديسمبر",
+        };
+        setGregorianDate(`${toArabicNum(g.day)} ${months[g.month.en] || g.month.en} ${toArabicNum(g.year)}`);
+      }
     };
-    fetchTimings();
-    const apiInterval = setInterval(fetchTimings, 5 * 60 * 1000);
+
+    const fetchByCoords = (lat: number, lng: number) => {
+      return fetch(`https://api.aladhan.com/v1/timings?latitude=${lat}&longitude=${lng}&method=5`)
+        .then((r) => r.json())
+        .then(handleResponse);
+    };
+
+    const fetchFallback = () => {
+      setLocationName("القاهرة");
+      return fetch("https://api.aladhan.com/v1/timingsByCity?city=cairo&country=egypt")
+        .then((r) => r.json())
+        .then(handleResponse);
+    };
+
+    const init = () => {
+      if (!navigator.geolocation) {
+        fetchFallback();
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          // Reverse geocode for city name
+          fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=ar`)
+            .then(r => r.json())
+            .then(data => {
+              setLocationName(data.city || data.locality || "موقعك");
+            })
+            .catch(() => setLocationName("موقعك"));
+          fetchByCoords(latitude, longitude);
+        },
+        () => {
+          // Permission denied or error — fallback to Cairo
+          fetchFallback();
+        },
+        { enableHighAccuracy: false, timeout: 8000 }
+      );
+    };
+
+    init();
+    const apiInterval = setInterval(init, 5 * 60 * 1000);
     const tickInterval = setInterval(() => setTick((t) => t + 1), 60 * 1000);
     return () => { clearInterval(apiInterval); clearInterval(tickInterval); };
   }, []);
@@ -289,7 +324,7 @@ export function HomeScreen() {
                 <p className="text-2xl text-primary font-['Cairo'] tabular-nums" style={{ fontWeight: 700 }}>
                   {nextPrayer ? formatTimeArabicWithPeriod((nextPrayer as any)._raw) : "..."}
                 </p>
-                <p className="text-text-tertiary text-xs">{countdown}</p>
+                <p className="text-text-tertiary text-xs">{countdown}{locationName ? ` · ${locationName}` : ""}</p>
               </div>
             </div>
 
@@ -347,7 +382,7 @@ export function HomeScreen() {
                   key={card.label}
                   onClick={() => navigate(card.path)}
                   className="relative overflow-hidden rounded-[20px] p-0 border-none cursor-pointer text-right transition-transform active:scale-[0.97]"
-                  style={{ backgroundColor: card.bgColor }}
+                  style={{ backgroundColor: card.bgColor, boxShadow: "0 4px 20px rgba(0,0,0,0.06), 0 1.5px 6px rgba(0,0,0,0.04)" }}
                 >
                   {/* Blob decoration */}
                   <CardBlob color={card.blobColor} />
@@ -382,7 +417,7 @@ export function HomeScreen() {
                   key={card.label}
                   onClick={() => navigate(card.path)}
                   className="relative col-span-2 overflow-hidden rounded-[20px] p-0 border-none cursor-pointer text-right transition-transform active:scale-[0.97]"
-                  style={{ backgroundColor: card.bgColor }}
+                  style={{ backgroundColor: card.bgColor, boxShadow: "0 4px 20px rgba(0,0,0,0.06), 0 1.5px 6px rgba(0,0,0,0.04)" }}
                 >
                   {/* Blob decoration */}
                   <svg
