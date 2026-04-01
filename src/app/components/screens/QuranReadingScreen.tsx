@@ -1,5 +1,6 @@
 import { useParams, useNavigate, useSearchParams } from "react-router";
-import { ArrowLeft, Search, Bookmark, Grid3X3, ChevronLeft, ChevronRight, RefreshCw, FileText, Image as ImageIcon, Loader2 } from "lucide-react";
+import React from "react";
+import { ArrowLeft, Search, Bookmark, ChevronLeft, ChevronRight, RefreshCw, FileText, Image as ImageIcon, Loader2, BookOpen, Copy, Mic, Play, Pause } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { FadeIn } from "../ui/FadeIn";
 
@@ -27,9 +28,100 @@ interface QuranBookmark {
   ayah: number;
 }
 
+interface SavedAyah {
+  surahNumber: number;
+  ayahNumber: number;
+  text: string;
+  surahName: string;
+}
+
+interface TafseerData {
+  text: string;
+  loading: boolean;
+  error: boolean;
+}
+
 const BOOKMARK_KEY = "quranBookmark";
+const SAVED_AYAHS_KEY = "savedAyahs";
 const TOTAL_PAGES = 604;
-const BISMILLAH = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
+
+// ── Basmala helpers ──────────────────────────────────────────────────────────
+const BASMALA_DISPLAY = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
+
+const basmalaVariants = [
+  'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ',
+  'بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ',
+  'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
+  'بسم الله الرحمن الرحيم',
+];
+
+/** Strip HTML tags (used for tajweed edition text) */
+const stripTags = (html: string): string => html.replace(/<[^>]*>/g, '');
+
+const stripBasmala = (text: string): string => {
+  const clean = stripTags(text);
+  for (const b of basmalaVariants) {
+    if (clean.includes(b)) return clean.replace(b, '').trim();
+  }
+  return clean.replace(/^بِسْمِ.*?الرَّحِيمِ\s*/u, '').trim();
+};
+
+const hasBasmala = (text: string): boolean => {
+  const clean = stripTags(text);
+  return basmalaVariants.some(b => clean.includes(b)) ||
+    /بسم/.test(clean);
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Tajweed HTML parser ───────────────────────────────────────────────────────
+const tajweedClassColors: Record<string, string> = {
+  'ham_wasl':            '#AAAAAA',
+  'madda_normal':        '#795548',
+  'madda_permissible':   '#795548',
+  'madda_necessary':     '#795548',
+  'madda_obligatory':    '#795548',
+  'qalaqah':             '#E74C3C',
+  'ikhafa':              '#3498DB',
+  'ikhafa_shafawi':      '#3498DB',
+  'idgham_ghunnah':      '#27AE60',
+  'idgham_wo_ghunnah':   '#2ECC71',
+  'idgham_shafawi':      '#27AE60',
+  'iqlab':               '#E91E8C',
+  'ghunnah':             '#9B59B6',
+  'lam_shamsiyah':       '#AAAAAA',
+};
+
+function parseTajweedHtml(html: string) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+  doc.body.childNodes.forEach(node => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (node.textContent) elements.push(<span key={i}>{node.textContent}</span>);
+    } else if (node.nodeName === 'TAJWEED') {
+      const el = node as Element;
+      const cls = el.getAttribute('class') || '';
+      const color = tajweedClassColors[cls] || 'inherit';
+      elements.push(<span key={i} style={{ color }}>{el.textContent}</span>);
+    }
+    i++;
+  });
+  return <>{elements}</>;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Tajweed legend ────────────────────────────────────────────────────────────
+const TAJWEED_LEGEND = [
+  { color: '#9B59B6', label: 'غنة' },
+  { color: '#3498DB', label: 'إخفاء' },
+  { color: '#27AE60', label: 'إدغام بغنة' },
+  { color: '#2ECC71', label: 'إدغام بلا غنة' },
+  { color: '#E91E8C', label: 'إقلاب' },
+  { color: '#E74C3C', label: 'قلقلة' },
+  { color: '#795548', label: 'مد' },
+];
+// ─────────────────────────────────────────────────────────────────────────────
 
 const toArabicNum = (n: number): string =>
   n.toString().replace(/\d/g, (d) => '\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669'[parseInt(d)]);
@@ -75,6 +167,39 @@ export function QuranReadingScreen() {
   const [jumpError, setJumpError] = useState(false);
   const jumpInputRef = useRef<HTMLInputElement>(null);
 
+  // Ayah bottom sheet states
+  const [selectedAyah, setSelectedAyah] = useState<AyahData | null>(null);
+  const [showAyahSheet, setShowAyahSheet] = useState(false);
+  const [savedAyahsIds, setSavedAyahsIds] = useState<Set<number>>(new Set());
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
+  const [tafseer, setTafseer] = useState<TafseerData>({ text: "", loading: false, error: false });
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [reviewMode, setReviewMode] = useState(false);
+  const [reviewInput, setReviewInput] = useState("");
+  const [reviewResult, setReviewResult] = useState<"correct" | "wrong" | null>(null);
+
+  // Font size state
+  const [fontSize, setFontSize] = useState(20);
+
+  // Tajweed states
+  const [showTajweed, setShowTajweed] = useState(false);
+  const [tajweedTexts, setTajweedTexts] = useState<Map<number, string>>(new Map());
+
+  // Page animation states
+  const [direction, setDirection] = useState<'left' | 'right' | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  // Bottom sheet animation states
+  const [isAyahSheetVisible, setIsAyahSheetVisible] = useState(false);
+  const [isJumpSheetVisible, setIsJumpSheetVisible] = useState(false);
+
+  // Load font size from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("quranFontSize");
+    if (saved) setFontSize(parseInt(saved));
+  }, []);
+
   // Check bookmark
   const checkBookmark = useCallback((page: number) => {
     try {
@@ -111,10 +236,15 @@ export function QuranReadingScreen() {
     setLoading(true);
     setError(false);
     try {
-      const res = await fetch(`https://api.alquran.cloud/v1/page/${page}/ar.alafasy`);
-      const json = await res.json();
-      if (json.code !== 200) throw new Error("API error");
-      const ayahs: AyahData[] = json.data.ayahs;
+      const [mainRes, tajweedRes] = await Promise.all([
+        fetch(`https://api.alquran.cloud/v1/page/${page}/ar.alafasy`),
+        fetch(`https://api.alquran.cloud/v1/page/${page}/quran-tajweed`),
+      ]);
+      const mainJson = await mainRes.json();
+      const tajweedJson = await tajweedRes.json();
+
+      if (mainJson.code !== 200) throw new Error("API error");
+      const ayahs: AyahData[] = mainJson.data.ayahs;
       if (ayahs.length > 0) setJuz(ayahs[0].juz);
 
       const groups: SurahGroup[] = [];
@@ -131,6 +261,25 @@ export function QuranReadingScreen() {
         current.ayahs.push(ayah);
       }
       setSurahGroups(groups);
+
+      // Build tajweed text map — filter out basmala ayahs from non-Fatiha, non-Tawbah surahs
+      if (tajweedJson.code === 200) {
+        const tajweedMap = new Map<number, string>();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const filteredTajweedAyahs = tajweedJson.data.ayahs.filter((ta: any) => {
+          if (ta.surah.number === 1 || ta.surah.number === 9) return true;
+          if (ta.numberInSurah === 1) {
+            const plain = stripTags(ta.text);
+            return !plain.includes('بسم');
+          }
+          return true;
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const ta of filteredTajweedAyahs) {
+          tajweedMap.set(ta.number, ta.text);
+        }
+        setTajweedTexts(tajweedMap);
+      }
     } catch {
       setError(true);
     } finally {
@@ -151,11 +300,33 @@ export function QuranReadingScreen() {
     }
   }, [currentPage, viewMode]);
 
-  const goNext = () => {
-    if (currentPage < TOTAL_PAGES) setCurrentPage((p) => p + 1);
+  // Load saved ayahs on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SAVED_AYAHS_KEY);
+      if (raw) {
+        const saved: SavedAyah[] = JSON.parse(raw);
+        const ids = new Set(saved.map((a) => a.ayahNumber));
+        setSavedAyahsIds(ids);
+      }
+    } catch {}
+  }, []);
+
+  const handleNext = () => {
+    if (currentPage < TOTAL_PAGES && !isAnimating) {
+      setDirection('left');
+      setIsAnimating(true);
+      setCurrentPage((p) => p + 1);
+      setTimeout(() => setIsAnimating(false), 250);
+    }
   };
-  const goPrev = () => {
-    if (currentPage > 1) setCurrentPage((p) => p - 1);
+  const handlePrev = () => {
+    if (currentPage > 1 && !isAnimating) {
+      setDirection('right');
+      setIsAnimating(true);
+      setCurrentPage((p) => p - 1);
+      setTimeout(() => setIsAnimating(false), 250);
+    }
   };
 
   const handleJumpConfirm = () => {
@@ -165,19 +336,136 @@ export function QuranReadingScreen() {
       return;
     }
     setCurrentPage(num);
-    setShowJumpSheet(false);
+    closeJumpSheet();
     setJumpInput("");
-    setJumpError(false);
   };
 
   const openJumpSheet = () => {
     setJumpInput("");
     setJumpError(false);
     setShowJumpSheet(true);
-    setTimeout(() => jumpInputRef.current?.focus(), 100);
+    requestAnimationFrame(() => {
+      setIsJumpSheetVisible(true);
+      setTimeout(() => jumpInputRef.current?.focus(), 100);
+    });
+  };
+
+  const closeJumpSheet = () => {
+    setIsJumpSheetVisible(false);
+    setTimeout(() => {
+      setShowJumpSheet(false);
+      setJumpError(false);
+    }, 300);
   };
 
   const headerName = surahGroups.map((g) => g.surahName).join(" – ");
+
+  const openAyahSheet = (ayah: AyahData) => {
+    setSelectedAyah(ayah);
+    setShowAyahSheet(true);
+    setTafseer({ text: "", loading: false, error: false });
+    setCopySuccess(false);
+    setReviewMode(false);
+    setReviewInput("");
+    setReviewResult(null);
+    if (currentAudio) {
+      currentAudio.pause();
+      setAudioPlaying(false);
+    }
+    requestAnimationFrame(() => setIsAyahSheetVisible(true));
+  };
+
+  const closeAyahSheet = () => {
+    setIsAyahSheetVisible(false);
+    setTimeout(() => {
+      setShowAyahSheet(false);
+      setSelectedAyah(null);
+      if (currentAudio) {
+        currentAudio.pause();
+        setAudioPlaying(false);
+      }
+    }, 300);
+  };
+
+  const toggleSaveAyah = () => {
+    if (!selectedAyah) return;
+    try {
+      const raw = localStorage.getItem(SAVED_AYAHS_KEY);
+      let saved: SavedAyah[] = raw ? JSON.parse(raw) : [];
+      const exists = saved.find((a) => a.ayahNumber === selectedAyah.number);
+      if (exists) {
+        // Remove
+        saved = saved.filter((a) => a.ayahNumber !== selectedAyah.number);
+      } else {
+        // Add
+        saved.push({
+          surahNumber: selectedAyah.surah.number,
+          ayahNumber: selectedAyah.number,
+          text: selectedAyah.text,
+          surahName: cleanSurahName(selectedAyah.surah.name),
+        });
+      }
+      localStorage.setItem(SAVED_AYAHS_KEY, JSON.stringify(saved));
+      const ids = new Set(saved.map((a) => a.ayahNumber));
+      setSavedAyahsIds(ids);
+    } catch {}
+  };
+
+  const toggleAudioPlay = () => {
+    if (!selectedAyah) return;
+    if (audioPlaying && currentAudio) {
+      currentAudio.pause();
+      setAudioPlaying(false);
+    } else {
+      if (currentAudio) {
+        currentAudio.pause();
+      }
+      const url = `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${selectedAyah.number}.mp3`;
+      const audio = new Audio(url);
+      audio.play();
+      audio.onended = () => setAudioPlaying(false);
+      setCurrentAudio(audio);
+      setAudioPlaying(true);
+    }
+  };
+
+  const fetchTafseer = async () => {
+    if (!selectedAyah) return;
+    setTafseer({ text: "", loading: true, error: false });
+    try {
+      const res = await fetch(`https://api.alquran.cloud/v1/ayah/${selectedAyah.number}/ar.muyassar`);
+      const json = await res.json();
+      if (json.code !== 200) throw new Error("API error");
+      setTafseer({ text: json.data.text, loading: false, error: false });
+    } catch {
+      setTafseer({ text: "", loading: false, error: true });
+    }
+  };
+
+  const copyAyah = async () => {
+    if (!selectedAyah) return;
+    try {
+      await navigator.clipboard.writeText(selectedAyah.text);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch {}
+  };
+
+  const startReview = () => {
+    setReviewMode(true);
+    setReviewInput("");
+    setReviewResult(null);
+  };
+
+  const checkReview = () => {
+    if (!selectedAyah) return;
+    const normalized = (s: string) => s.replace(/[\u064B-\u065F\u0670\u06D6-\u06ED]/g, "").replace(/\s+/g, " ").trim();
+    if (normalized(reviewInput) === normalized(selectedAyah.text)) {
+      setReviewResult("correct");
+    } else {
+      setReviewResult("wrong");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-surface-warm flex flex-col">
@@ -210,7 +498,7 @@ export function QuranReadingScreen() {
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-divider py-3 px-6 flex items-center justify-between" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
         <button
           className={`p-2 ${currentPage > 1 ? "text-primary" : "text-text-tertiary opacity-30 cursor-not-allowed pointer-events-none"}`}
-          onClick={goPrev}
+          onClick={handlePrev}
           disabled={currentPage <= 1}
         >
           <ChevronRight size={22} />
@@ -234,7 +522,7 @@ export function QuranReadingScreen() {
 
         <button
           className={`p-2 ${currentPage < TOTAL_PAGES ? "text-primary" : "text-text-tertiary opacity-30 cursor-not-allowed pointer-events-none"}`}
-          onClick={goNext}
+          onClick={handleNext}
           disabled={currentPage >= TOTAL_PAGES}
         >
           <ChevronLeft size={22} />
@@ -252,7 +540,7 @@ export function QuranReadingScreen() {
           }}
         >
           <FileText size={16} />
-          <span className="font-['Cairo']">نص</span>
+          <span className="font-['Cairo']">آيات</span>
         </button>
         <button
           onClick={() => setViewMode("image")}
@@ -263,12 +551,103 @@ export function QuranReadingScreen() {
           }}
         >
           <ImageIcon size={16} />
-          <span className="font-['Cairo']">صورة</span>
+          <span className="font-['Cairo']">صفحة</span>
         </button>
       </div>
 
+      {/* Font Size Control — only in ayah mode */}
+      {viewMode === "ayah" && (
+        <>
+          {/* Row 1: font size + tajweed toggle */}
+          <div className="flex items-center justify-between gap-3 py-2.5 px-5 border-b border-divider/40 bg-surface-elevated">
+            {/* Font size controls */}
+            <div className="flex items-center gap-2.5">
+              {/* Increase */}
+              <button
+                onClick={() => {
+                  const s = Math.min(32, fontSize + 2);
+                  setFontSize(s);
+                  localStorage.setItem("quranFontSize", s.toString());
+                }}
+                className={`flex items-center justify-center w-9 h-9 rounded-full bg-secondary text-text-secondary active:bg-primary active:text-white transition-colors ${fontSize >= 32 ? "opacity-30 cursor-not-allowed" : ""}`}
+                style={{ fontFamily: "Amiri, serif" }}
+                disabled={fontSize >= 32}
+              >
+                <span style={{ fontSize: "22px", lineHeight: 1, display: "block", marginTop: "3px" }}>أ</span>
+              </button>
+
+              {/* Dot scale */}
+              <div className="flex gap-1 items-center">
+                {[14, 18, 22, 26, 32].map(size => (
+                  <div
+                    key={size}
+                    className={`rounded-full transition-all ${fontSize >= size ? "bg-primary" : "bg-divider"}`}
+                    style={{ width: fontSize >= size ? 8 : 6, height: fontSize >= size ? 8 : 6 }}
+                  />
+                ))}
+              </div>
+
+              {/* Decrease */}
+              <button
+                onClick={() => {
+                  const s = Math.max(14, fontSize - 2);
+                  setFontSize(s);
+                  localStorage.setItem("quranFontSize", s.toString());
+                }}
+                className={`flex items-center justify-center w-9 h-9 rounded-full bg-secondary text-text-secondary active:bg-primary active:text-white transition-colors ${fontSize <= 14 ? "opacity-30 cursor-not-allowed" : ""}`}
+                style={{ fontFamily: "Amiri, serif" }}
+                disabled={fontSize <= 14}
+              >
+                <span style={{ fontSize: "14px", lineHeight: 1, display: "block", marginTop: "2px" }}>أ</span>
+              </button>
+            </div>
+
+            {/* Tajweed toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-text-secondary font-['Cairo']">أحكام التجويد</span>
+              <button
+                dir="ltr"
+                onClick={() => setShowTajweed(v => !v)}
+                className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
+                style={{ backgroundColor: showTajweed ? "#7C5C42" : "rgba(0,0,0,0.15)" }}
+                role="switch"
+                aria-checked={showTajweed}
+              >
+                <span
+                  className="inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200"
+                  style={{ transform: showTajweed ? "translateX(22px)" : "translateX(2px)" }}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Row 2: tajweed legend (only when tajweed is on) */}
+          {showTajweed && (
+            <div
+              className="flex gap-2 overflow-x-auto px-4 py-2 border-b border-divider/40 bg-surface-elevated"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {TAJWEED_LEGEND.map(rule => (
+                <div key={rule.label} className="flex items-center gap-1 flex-shrink-0">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: rule.color }} />
+                  <span className="text-xs text-text-secondary font-['Cairo']">{rule.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
       {/* Content */}
-      <div className="flex-1 overflow-y-auto pb-24">
+      <div
+        key={currentPage}
+        className="flex-1 overflow-y-auto pb-24"
+        style={{
+          animation: direction
+            ? `${direction === 'left' ? 'slideInLeft' : 'slideInRight'} 250ms ease-out`
+            : 'none',
+        }}
+      >
         {viewMode === "image" ? (
           /* ===== IMAGE MODE ===== */
           <div style={{ width: "100%", lineHeight: 0, fontSize: 0 }}>
@@ -331,12 +710,9 @@ export function QuranReadingScreen() {
                 const isTawbah = group.surahNumber === 9;
                 const startsAtBeginning = group.ayahs[0]?.numberInSurah === 1;
 
+                // Use hasBasmala() so bracket markers in tajweed text don't break detection
                 const isBismillahAyah = (ayah: AyahData) =>
-                  ayah.numberInSurah === 1 &&
-                  !isTawbah &&
-                  (ayah.text.startsWith('بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ') ||
-                   ayah.text.startsWith('بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ') ||
-                   ayah.text.startsWith('بِسۡمِ ٱللَّهِ'));
+                  ayah.numberInSurah === 1 && !isTawbah && hasBasmala(ayah.text);
 
                 return (
                   <div key={group.surahNumber} className="mb-6">
@@ -351,24 +727,86 @@ export function QuranReadingScreen() {
                     )}
 
                     {group.ayahs.map((ayah, ai) => {
-                      const showAsBismillahCard = isBismillahAyah(ayah);
-                      return (
-                        <FadeIn key={ayah.number} delay={0.03 + (gi * 4 + ai) * 0.03} y={14}>
-                          <div className="mb-2">
-                            {showAsBismillahCard ? (
-                              <div className="bg-primary rounded-2xl py-3 px-6 mb-4">
-                                <p className="text-white text-center font-['Amiri'] text-xl" style={{ lineHeight: '2' }}>
-                                  {ayah.text} {isFirstSurah ? `﴿${toArabicNum(ayah.numberInSurah)}﴾` : ''}
-                                </p>
-                              </div>
-                            ) : (
-                              <p
-                                className="text-text-primary text-center font-['Amiri'] text-xl"
-                                style={{ lineHeight: '2.4' }}
-                              >
-                                {ayah.text} ﴿{toArabicNum(ayah.numberInSurah)}﴾
+                      const showAsBismillah = isBismillahAyah(ayah);
+                      const delay = 0.03 + (gi * 4 + ai) * 0.03;
+
+                      // For Surah Al-Fatiha: the whole ayah 1 IS the basmala — show as single card
+                      if (showAsBismillah && isFirstSurah) {
+                        return (
+                          <FadeIn key={ayah.number} delay={delay} y={14}>
+                            <div className="bg-primary rounded-2xl py-3 px-6 mb-4">
+                              <p className="text-white text-center font-['Amiri'] text-xl" style={{ lineHeight: '2' }}>
+                                {showTajweed && tajweedTexts.get(ayah.number)
+                                  ? parseTajweedHtml(tajweedTexts.get(ayah.number)!)
+                                  : ayah.text}
+                                {` ﴿${toArabicNum(ayah.numberInSurah)}﴾`}
                               </p>
+                            </div>
+                          </FadeIn>
+                        );
+                      }
+
+                      // For all other surahs (not Tawbah): split basmala card + ayah card
+                      if (showAsBismillah) {
+                        const bodyText = stripBasmala(ayah.text);
+                        return (
+                          <FadeIn key={ayah.number} delay={delay} y={14}>
+                            {/* Basmala card — standalone, not tappable */}
+                            <div className="bg-primary rounded-2xl py-3 px-6 mb-3">
+                              <p className="text-white text-center font-['Amiri'] text-xl" style={{ lineHeight: '2' }}>
+                                {BASMALA_DISPLAY}
+                              </p>
+                            </div>
+                            {/* Ayah body card — tappable */}
+                            {bodyText.length > 0 && (
+                              <div
+                                onClick={() => openAyahSheet(ayah)}
+                                className="w-full bg-background border border-divider/40 rounded-2xl px-5 py-5 mb-2 text-center cursor-pointer active:bg-secondary/50 transition-colors"
+                                dir="rtl"
+                              >
+                                <p
+                                  className="leading-loose font-['Amiri'] text-center text-text-primary"
+                                  dir="rtl"
+                                  style={{ fontSize: `${fontSize}px` }}
+                                >
+                                  {bodyText}
+                                </p>
+                                <span
+                                  className="block text-center text-primary mt-3"
+                                  style={{ fontSize: '18px', fontFamily: 'Amiri, serif' }}
+                                >
+                                  ﴿{toArabicNum(ayah.numberInSurah)}﴾
+                                </span>
+                              </div>
                             )}
+                          </FadeIn>
+                        );
+                      }
+
+                      // Regular ayah card
+                      const tajweedHtml = tajweedTexts.get(ayah.number);
+                      return (
+                        <FadeIn key={ayah.number} delay={delay} y={14}>
+                          <div
+                            onClick={() => openAyahSheet(ayah)}
+                            className="w-full bg-background border border-divider/40 rounded-2xl px-5 py-5 mb-2 text-center cursor-pointer active:bg-secondary/50 transition-colors"
+                            dir="rtl"
+                          >
+                            <p
+                              className="leading-loose font-['Amiri'] text-center text-text-primary"
+                              dir="rtl"
+                              style={{ fontSize: `${fontSize}px` }}
+                            >
+                              {showTajweed && tajweedHtml
+                                ? parseTajweedHtml(tajweedHtml)
+                                : ayah.text}
+                            </p>
+                            <span
+                              className="block text-center text-primary mt-3"
+                              style={{ fontSize: '18px', fontFamily: 'Amiri, serif' }}
+                            >
+                              ﴿{toArabicNum(ayah.numberInSurah)}﴾
+                            </span>
                           </div>
                         </FadeIn>
                       );
@@ -383,14 +821,16 @@ export function QuranReadingScreen() {
 
       {/* Page Jump Bottom Sheet */}
       {showJumpSheet && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center">
+        <div className="fixed inset-0 z-50 flex items-end justify-center pointer-events-none">
+          {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => { setShowJumpSheet(false); setJumpError(false); }}
+            className={`absolute inset-0 pointer-events-auto transition-opacity duration-300 ${isJumpSheetVisible ? "opacity-100" : "opacity-0"}`}
+            style={{ backgroundColor: "rgba(0,0,0,0.4)" }}
+            onClick={closeJumpSheet}
           />
+          {/* Sheet */}
           <div
-            className="relative w-full max-w-md bg-background rounded-t-2xl p-6 animate-slide-up"
-            style={{ animation: "slideUp 0.25s ease-out" }}
+            className={`relative w-full max-w-md bg-background rounded-t-2xl p-6 pointer-events-auto transition-transform duration-300 ease-in-out ${isJumpSheetVisible ? "translate-y-0" : "translate-y-full"}`}
           >
             <div className="flex justify-center mb-4">
               <div className="w-10 h-1 rounded-full bg-divider" />
@@ -417,6 +857,162 @@ export function QuranReadingScreen() {
             >
               انتقل
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Ayah Bottom Sheet */}
+      {showAyahSheet && selectedAyah && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center pointer-events-none">
+          {/* Backdrop */}
+          <div
+            className={`absolute inset-0 pointer-events-auto transition-opacity duration-300 ${isAyahSheetVisible ? "opacity-100" : "opacity-0"}`}
+            style={{ backgroundColor: "rgba(0,0,0,0.4)" }}
+            onClick={closeAyahSheet}
+          />
+          {/* Sheet */}
+          <div
+            className={`relative w-full bg-background rounded-t-3xl overflow-y-auto pointer-events-auto transition-transform duration-300 ease-in-out ${isAyahSheetVisible ? "translate-y-0" : "translate-y-full"}`}
+            style={{ maxHeight: "70vh" }}
+          >
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-4">
+              <div className="w-10 h-1 rounded-full bg-divider" />
+            </div>
+
+            {/* Header */}
+            <div className="px-6 pb-4 text-center border-b border-divider/40">
+              <p className="text-xs text-text-tertiary mb-1">
+                سورة {cleanSurahName(selectedAyah.surah.name)} - آية {toArabicNum(selectedAyah.numberInSurah)}
+              </p>
+              <p className="text-sm text-text-secondary font-['Amiri'] leading-relaxed" dir="rtl">
+                {selectedAyah.text.substring(0, 30)}{selectedAyah.text.length > 30 ? "..." : ""}
+              </p>
+            </div>
+
+            {/* Review Mode */}
+            {reviewMode ? (
+              <div className="px-6 py-6">
+                <button
+                  onClick={() => setReviewMode(false)}
+                  className="text-sm text-primary mb-4"
+                >
+                  ← العودة
+                </button>
+                <h4 className="text-text-primary font-['Cairo'] text-center mb-4">اكتب الآية من ذاكرتك</h4>
+                <textarea
+                  value={reviewInput}
+                  onChange={(e) => setReviewInput(e.target.value)}
+                  placeholder="اكتب الآية هنا..."
+                  className="w-full bg-secondary rounded-xl p-4 text-right text-text-primary placeholder:text-text-tertiary outline-none focus:ring-2 focus:ring-primary/30 min-h-[120px] font-['Amiri'] leading-loose"
+                  dir="rtl"
+                />
+                <button
+                  onClick={checkReview}
+                  className="w-full mt-4 bg-primary text-white rounded-xl py-3 font-['Cairo'] active:opacity-80 transition-opacity"
+                >
+                  تحقق من الإجابة
+                </button>
+                {reviewResult === "correct" && (
+                  <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl text-center">
+                    <p className="text-green-600 font-['Cairo']">✓ أحسنت! الآية صحيحة</p>
+                  </div>
+                )}
+                {reviewResult === "wrong" && (
+                  <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                    <p className="text-red-600 font-['Cairo'] text-center mb-2">✗ المحاولة غير صحيحة</p>
+                    <p className="text-xs text-text-tertiary text-center">الآية الصحيحة:</p>
+                    <p className="text-text-primary font-['Amiri'] leading-loose text-center mt-2" dir="rtl">
+                      {selectedAyah.text}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : tafseer.text ? (
+              /* Tafseer View */
+              <div className="px-6 py-6">
+                <button
+                  onClick={() => setTafseer({ text: "", loading: false, error: false })}
+                  className="text-sm text-primary mb-4"
+                >
+                  ← العودة
+                </button>
+                <h4 className="text-text-primary font-['Cairo'] text-center mb-4">التفسير</h4>
+                <p className="text-text-secondary font-['Cairo'] leading-relaxed text-right" dir="rtl">
+                  {tafseer.text}
+                </p>
+              </div>
+            ) : (
+              /* Options List */
+              <div className="py-2">
+                {/* حفظ الآية */}
+                <button
+                  onClick={toggleSaveAyah}
+                  className="w-full flex items-center gap-3 px-6 py-3.5 border-b border-divider/40 active:bg-secondary/30 transition-colors"
+                >
+                  <Bookmark 
+                    size={20} 
+                    fill={savedAyahsIds.has(selectedAyah.number) ? "currentColor" : "none"}
+                    style={{ color: savedAyahsIds.has(selectedAyah.number) ? "#C4A35A" : "#7C5C42" }}
+                  />
+                  <span className="flex-1 text-right text-text-primary font-['Cairo']" style={{ color: savedAyahsIds.has(selectedAyah.number) ? "#22c55e" : undefined }}>
+                    {savedAyahsIds.has(selectedAyah.number) ? "تم الحفظ ✓" : "حفظ الآية"}
+                  </span>
+                </button>
+
+                {/* تشغيل الآية */}
+                <button
+                  onClick={toggleAudioPlay}
+                  className="w-full flex items-center gap-3 px-6 py-3.5 border-b border-divider/40 active:bg-secondary/30 transition-colors"
+                >
+                  {audioPlaying ? (
+                    <Pause size={20} style={{ color: "#7C5C42" }} />
+                  ) : (
+                    <Play size={20} style={{ color: "#7C5C42" }} />
+                  )}
+                  <span className="flex-1 text-right text-text-primary font-['Cairo']">
+                    {audioPlaying ? "إيقاف" : "تشغيل الآية"}
+                  </span>
+                </button>
+
+                {/* تفسير */}
+                <button
+                  onClick={fetchTafseer}
+                  className="w-full flex items-center gap-3 px-6 py-3.5 border-b border-divider/40 active:bg-secondary/30 transition-colors"
+                >
+                  {tafseer.loading ? (
+                    <Loader2 size={20} className="animate-spin" style={{ color: "#7C5C42" }} />
+                  ) : (
+                    <BookOpen size={20} style={{ color: "#7C5C42" }} />
+                  )}
+                  <span className="flex-1 text-right text-text-primary font-['Cairo']">
+                    {tafseer.loading ? "جاري التحميل..." : "تفسير"}
+                  </span>
+                </button>
+
+                {/* نسخ الآية */}
+                <button
+                  onClick={copyAyah}
+                  className="w-full flex items-center gap-3 px-6 py-3.5 border-b border-divider/40 active:bg-secondary/30 transition-colors"
+                >
+                  <Copy size={20} style={{ color: copySuccess ? "#22c55e" : "#7C5C42" }} />
+                  <span className="flex-1 text-right text-text-primary font-['Cairo']" style={{ color: copySuccess ? "#22c55e" : undefined }}>
+                    {copySuccess ? "تم النسخ ✓" : "نسخ الآية"}
+                  </span>
+                </button>
+
+                {/* تسميع (مراجعة الحفظ) */}
+                <button
+                  onClick={startReview}
+                  className="w-full flex items-center gap-3 px-6 py-3.5 active:bg-secondary/30 transition-colors"
+                >
+                  <Mic size={20} style={{ color: "#7C5C42" }} />
+                  <span className="flex-1 text-right text-text-primary font-['Cairo']">
+                    تسميع (مراجعة الحفظ)
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
