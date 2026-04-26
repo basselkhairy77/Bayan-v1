@@ -384,12 +384,15 @@ export function HomeScreen() {
       <FadeIn delay={0.08}>
         <div className="px-4 -mt-6">
           {(locationStatus === 'idle' || locationStatus === 'denied') && !loadingPrayers ? (
-            <div className="bg-surface-elevated shadow-sm border border-divider/40 rounded-2xl p-6 text-center relative z-10">
-              <div className="text-3xl mb-2">📍</div>
+            <div className="bg-surface-elevated shadow-sm border border-divider/40 rounded-2xl p-6 text-center relative z-10 flex flex-col items-center">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4 relative mt-2">
+                <MapPin size={32} className="text-primary relative z-10" strokeWidth={1.5} />
+                <div className="absolute inset-0 rounded-full border-2 border-primary/20 animate-ping opacity-75" style={{ animationDuration: '3s' }} />
+              </div>
               <p className="font-['Cairo'] font-semibold text-text-primary text-base">
                 مواقيت الصلاة
               </p>
-              <p className="text-text-secondary text-sm mt-1 font-['Cairo']">
+              <p className="text-text-secondary text-sm mt-1.5 font-['Cairo']">
                 يرجى تحديد موقعك لعرض مواقيت الصلاة
               </p>
               <button
