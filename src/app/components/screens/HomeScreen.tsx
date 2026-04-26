@@ -9,11 +9,14 @@ import {
   Star,
   HeartPulse,
   CalendarCheck,
+  MapPin,
+  Search,
+  X
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { FadeIn } from "../ui/FadeIn";
 import { useMenu } from "../ui/MenuContext";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 
 interface PrayerTimeEntry {
   name: string;
@@ -48,7 +51,6 @@ const formatTimeArabicWithPeriod = (time24: string): string => {
   return `${toArabicNum(h12)}:${toArabicNum(m.toString().padStart(2, "0"))} ${period}`;
 };
 
-/* Decorative blob SVG for card backgrounds */
 function CardBlob({ color, opacity = 0.07 }: { color: string; opacity?: number }) {
   return (
     <svg
@@ -66,7 +68,6 @@ function CardBlob({ color, opacity = 0.07 }: { color: string; opacity?: number }
   );
 }
 
-/* Illustrated icon component for cards */
 function CardIllustration({
   icon: Icon,
   accentColor,
@@ -111,7 +112,7 @@ const quickCardData = [
     label: "المتابعة",
     subtitle: "تابع عبادتك اليومية",
     icon: CalendarCheck,
-    path: "/tasbeeh",
+    path: "/prayer-tracker",
     bgColor: "#F8F0E8",
     blobColor: "#7C5C42",
     accentColor: "#7C5C42",
@@ -129,86 +130,178 @@ const quickCardData = [
   },
 ];
 
+const popularCities = [
+  { name: 'القاهرة', lat: 30.0444, lng: 31.2357 },
+  { name: 'الرياض', lat: 24.7136, lng: 46.6753 },
+  { name: 'جدة', lat: 21.4858, lng: 39.1925 },
+  { name: 'دبي', lat: 25.2048, lng: 55.2708 },
+  { name: 'الكويت', lat: 29.3759, lng: 47.9774 },
+  { name: 'عمّان', lat: 31.9454, lng: 35.9284 },
+  { name: 'بيروت', lat: 33.8938, lng: 35.5018 },
+  { name: 'الإسكندرية', lat: 31.2001, lng: 29.9187 },
+];
+
 export function HomeScreen() {
   const navigate = useNavigate();
   const { isMenuOpen, toggleMenu } = useMenu();
-  const [timings, setTimings] = useState<Record<string, string> | null>(null);
   const [tick, setTick] = useState(0);
   const [hijriDate, setHijriDate] = useState("");
   const [gregorianDate, setGregorianDate] = useState("");
-  const [locationName, setLocationName] = useState("");
+
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'granted' | 'denied' | 'manual'>('idle');
+  const [prayerTimes, setPrayerTimes] = useState<Record<string, string> | null>(null);
+  const [savedCity, setSavedCity] = useState<{ name: string, lat?: number, lng?: number } | null>(null);
+  const [showLocationSheet, setShowLocationSheet] = useState(false);
+  const [citySearch, setCitySearch] = useState('');
+  const [cityResults, setCityResults] = useState<any[]>([]);
+  const [loadingPrayers, setLoadingPrayers] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimeout = useRef<NodeJS.Timeout>(null);
+
+  const fetchPrayerTimes = (lat: number, lng: number) => {
+    setLoadingPrayers(true);
+    fetch(`https://api.aladhan.com/v1/timings?latitude=${lat}&longitude=${lng}&method=5`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.code === 200) {
+          setPrayerTimes(json.data.timings);
+          const h = json.data.date.hijri;
+          const g = json.data.date.gregorian;
+          const dayAr = h.weekday.ar;
+          setHijriDate(`${dayAr} ${toArabicNum(h.day)} ${h.month.ar} ${toArabicNum(h.year)}`);
+          const months: Record<string, string> = {
+            January: "يناير", February: "فبراير", March: "مارس", April: "أبريل",
+            May: "مايو", June: "يونيو", July: "يوليو", August: "أغسطس",
+            September: "سبتمبر", October: "أكتوبر", November: "نوفمبر", December: "ديسمبر",
+          };
+          setGregorianDate(`${toArabicNum(g.day)} ${months[g.month.en] || g.month.en} ${toArabicNum(g.year)}`);
+        }
+      })
+      .finally(() => setLoadingPrayers(false));
+  };
 
   useEffect(() => {
-    const handleResponse = (json: any) => {
-      if (json.code === 200) {
-        setTimings(json.data.timings);
-        const h = json.data.date.hijri;
-        const g = json.data.date.gregorian;
-        const dayAr = h.weekday.ar;
-        setHijriDate(`${dayAr} ${toArabicNum(h.day)} ${h.month.ar} ${toArabicNum(h.year)}`);
-        const months: Record<string, string> = {
-          January: "يناير", February: "فبراير", March: "مارس", April: "أبريل",
-          May: "مايو", June: "يونيو", July: "يوليو", August: "أغسطس",
-          September: "سبتمبر", October: "أكتوبر", November: "نوفمبر", December: "ديسمبر",
-        };
-        setGregorianDate(`${toArabicNum(g.day)} ${months[g.month.en] || g.month.en} ${toArabicNum(g.year)}`);
+    try {
+      const stored = localStorage.getItem("userLocation");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.lat && parsed.lng) {
+          setLocationStatus(parsed.type === 'manual' ? 'manual' : 'granted');
+          setSavedCity({ name: parsed.name, lat: parsed.lat, lng: parsed.lng });
+          fetchPrayerTimes(parsed.lat, parsed.lng);
+        } else {
+          setLocationStatus('idle');
+        }
+      } else {
+        setLocationStatus('idle');
       }
-    };
+    } catch {
+      setLocationStatus('idle');
+    }
 
-    const fetchByCoords = (lat: number, lng: number) => {
-      return fetch(`https://api.aladhan.com/v1/timings?latitude=${lat}&longitude=${lng}&method=5`)
-        .then((r) => r.json())
-        .then(handleResponse);
-    };
-
-    const fetchFallback = () => {
-      setLocationName("القاهرة");
-      return fetch("https://api.aladhan.com/v1/timingsByCity?city=cairo&country=egypt")
-        .then((r) => r.json())
-        .then(handleResponse);
-    };
-
-    const init = () => {
-      if (!navigator.geolocation) {
-        fetchFallback();
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude, longitude } = pos.coords;
-          // Reverse geocode for city name
-          fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=ar`)
-            .then(r => r.json())
-            .then(data => {
-              setLocationName(data.city || data.locality || "موقعك");
-            })
-            .catch(() => setLocationName("موقعك"));
-          fetchByCoords(latitude, longitude);
-        },
-        () => {
-          // Permission denied or error — fallback to Cairo
-          fetchFallback();
-        },
-        { enableHighAccuracy: false, timeout: 8000 }
-      );
-    };
-
-    init();
-    const apiInterval = setInterval(init, 5 * 60 * 1000);
     const tickInterval = setInterval(() => setTick((t) => t + 1), 60 * 1000);
-    return () => { clearInterval(apiInterval); clearInterval(tickInterval); };
+    return () => clearInterval(tickInterval);
   }, []);
 
+  const handleLocationRequest = () => {
+    setLoadingPrayers(true);
+    if (!navigator.geolocation) {
+      setLocationStatus('denied');
+      setLoadingPrayers(false);
+      setShowLocationSheet(true);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=ar`)
+          .then(r => r.json())
+          .then(data => {
+            const cityName = data.city || data.locality || "موقعي";
+            setLocationStatus('granted');
+            setSavedCity({ name: cityName, lat: latitude, lng: longitude });
+            localStorage.setItem("userLocation", JSON.stringify({ type: 'gps', lat: latitude, lng: longitude, name: cityName }));
+            fetchPrayerTimes(latitude, longitude);
+          })
+          .catch(() => {
+            setLocationStatus('granted');
+            setSavedCity({ name: "موقعي", lat: latitude, lng: longitude });
+            localStorage.setItem("userLocation", JSON.stringify({ type: 'gps', lat: latitude, lng: longitude, name: "موقعي" }));
+            fetchPrayerTimes(latitude, longitude);
+          });
+      },
+      () => {
+        setLocationStatus('denied');
+        setLoadingPrayers(false);
+        setShowLocationSheet(true);
+      },
+      { enableHighAccuracy: false, timeout: 8000 }
+    );
+  };
+
+  const searchCities = async (query: string) => {
+    if (query.length < 2) {
+      setCityResults([]);
+      setSearchLoading(false);
+      return;
+    }
+    
+    setSearchLoading(true);
+    try {
+      const res = await fetch(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=20&language=ar&format=json`
+      );
+      const data = await res.json();
+      
+      if (data.results && data.results.length > 0) {
+        // Remove duplicates — keep only one result per city name
+        const seen = new Set<string>();
+        const filtered = data.results
+          .filter((r: any) => {
+            const key = r.name?.toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .slice(0, 6)
+          .map((r: any) => ({
+            displayName: r.name,
+            name: r.name + (r.country ? `، ${r.country}` : ''),
+            lat: r.latitude,
+            lng: r.longitude,
+          }));
+        
+        setCityResults(filtered);
+      } else {
+        setCityResults([]);
+      }
+    } catch (err) {
+      setCityResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const selectCity = (city: { name: string, lat: number, lng: number }) => {
+    setLoadingPrayers(true);
+    localStorage.setItem("userLocation", JSON.stringify({ type: 'manual', name: city.name, lat: city.lat, lng: city.lng }));
+    setShowLocationSheet(false);
+    setSavedCity(city);
+    setLocationStatus('manual');
+    fetchPrayerTimes(city.lat, city.lng);
+  };
+
   const { prayerList, nextPrayer, countdown } = useMemo(() => {
-    void tick; // dependency to recalc every minute
-    if (!timings) return { prayerList: [] as PrayerTimeEntry[], nextPrayer: null as PrayerTimeEntry | null, countdown: "" };
+    void tick;
+    if (!prayerTimes) return { prayerList: [] as PrayerTimeEntry[], nextPrayer: null as PrayerTimeEntry | null, countdown: "" };
 
     const now = new Date();
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
     let foundNext = false;
     const list: PrayerTimeEntry[] = PRAYER_KEYS.map((p) => {
-      const raw = (timings[p.key] || "00:00").split(" ")[0];
+      const raw = (prayerTimes[p.key] || "00:00").split(" ")[0];
       const [h, m] = raw.split(":").map(Number);
       const totalMin = h * 60 + m;
       const passed = totalMin < nowMinutes;
@@ -217,7 +310,6 @@ export function HomeScreen() {
       return { name: p.name, key: p.key, time: formatTimeArabic(raw), icon: p.icon, passed: passed && !isNext, isNext, _raw: raw, _totalMin: totalMin };
     });
 
-    // If all prayers passed (after Isha), wrap to Fajr as next
     let next = list.find((p) => p.isNext) || null;
     if (!next) {
       list.forEach((p) => { p.passed = true; p.isNext = false; });
@@ -232,14 +324,14 @@ export function HomeScreen() {
       if (diff <= 0) diff += 24 * 60;
       const hrs = Math.floor(diff / 60);
       const mins = diff % 60;
-      cd = hrs > 0 ? `بعد ${toArabicNum(hrs)} س ${toArabicNum(mins)} د` : `بعد ${toArabicNum(mins)} د`;
+      cd = hrs > 0 ? `بعد ${toArabicNum(hrs)} س ${toArabicNum(mins)} د` : `بعد ${toArabicNum(mins)} ��`;
     }
 
     return { prayerList: list, nextPrayer: next, countdown: cd };
-  }, [timings, tick]);
+  }, [prayerTimes, tick]);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-6">
       {/* Integrated Primary Header */}
       <FadeIn delay={0}>
         <div className="bg-primary rounded-b-[2rem]">
@@ -263,15 +355,26 @@ export function HomeScreen() {
           </div>
 
           {/* Greeting */}
-          <div className="px-6 pb-8">
-            <p className="text-white/60 text-sm text-right">السلام عليكم</p>
-            <h1 className="text-white mt-0.5 text-right font-['Cairo']">مسلم</h1>
-            <div className="flex items-center justify-between mt-3 text-white/50 text-sm">
-              <div className="flex items-center gap-2">
-                <Clock size={14} />
-                <span>{hijriDate}</span>
+          <div className="px-6 pb-8 text-right relative z-0">
+            <p className="text-white/60 text-sm">السلام عليكم</p>
+            <h1 className="text-white mt-0.5 font-['Cairo']">مسلم</h1>
+            <div className="flex flex-col gap-1 mt-3">
+              <div className="flex items-center justify-between text-white/50 text-sm">
+                <div className="flex items-center gap-2">
+                  <Clock size={14} />
+                  <span>{hijriDate}</span>
+                </div>
+                <span>{gregorianDate}</span>
               </div>
-              <span>{gregorianDate}</span>
+              {(locationStatus === 'granted' || locationStatus === 'manual') && savedCity?.name && (
+                <button
+                  onClick={() => setShowLocationSheet(true)}
+                  className="flex items-center gap-1.5 text-white/70 text-xs font-['Cairo'] mt-1 active:opacity-70 transition-opacity self-start ml-auto"
+                >
+                  <MapPin size={12} />
+                  <span>{savedCity.name}</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -280,92 +383,109 @@ export function HomeScreen() {
       {/* Prayer Times Card */}
       <FadeIn delay={0.08}>
         <div className="px-4 -mt-6">
-          <div className="bg-surface-elevated rounded-2xl p-4 shadow-sm border border-divider/40">
-            {/* Current/Next Prayer */}
-            {!timings ? (
-              <div className="animate-pulse">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-secondary" />
-                    <div className="space-y-1.5">
-                      <div className="h-3 w-16 bg-secondary rounded" />
-                      <div className="h-4 w-12 bg-secondary rounded" />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5 flex flex-col items-end">
-                    <div className="h-7 w-20 bg-secondary rounded" />
-                    <div className="h-3 w-14 bg-secondary rounded" />
-                  </div>
-                </div>
-                <div className="h-px bg-divider my-3" />
-                <div className="grid grid-cols-6 gap-1">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="flex flex-col items-center gap-1 py-2">
-                      <div className="w-4 h-4 bg-secondary rounded-full" />
-                      <div className="h-2.5 w-8 bg-secondary rounded" />
-                      <div className="h-3 w-10 bg-secondary rounded" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-            <>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  {(() => { const Icon = nextPrayer?.icon || Sun; return <Icon size={16} className="text-primary" />; })()}
-                </div>
+          {(locationStatus === 'idle' || locationStatus === 'denied') && !loadingPrayers ? (
+            <div className="bg-surface-elevated shadow-sm border border-divider/40 rounded-2xl p-6 text-center relative z-10">
+              <div className="text-3xl mb-2">📍</div>
+              <p className="font-['Cairo'] font-semibold text-text-primary text-base">
+                مواقيت الصلاة
+              </p>
+              <p className="text-text-secondary text-sm mt-1 font-['Cairo']">
+                يرجى تحديد موقعك لعرض مواقيت الصلاة
+              </p>
+              <button
+                onClick={handleLocationRequest}
+                className="mt-4 bg-primary text-white font-['Cairo'] rounded-xl px-6 py-2.5 text-sm w-full transition-transform active:scale-[0.98]"
+              >
+                تحديد الموقع
+              </button>
+            </div>
+          ) : (
+            <div className="bg-surface-elevated rounded-2xl p-4 shadow-sm border border-divider/40 relative z-10">
+              {loadingPrayers || !prayerTimes ? (
                 <div>
-                  <p className="text-text-secondary text-xs">الصلاة القادمة</p>
-                  <p className="text-text-primary text-sm" style={{ fontWeight: 600 }}>{nextPrayer?.name || "العصر"}</p>
-                </div>
-              </div>
-              <div className="text-left">
-                <p className="text-2xl text-primary font-['Cairo'] tabular-nums" style={{ fontWeight: 700 }}>
-                  {nextPrayer ? formatTimeArabicWithPeriod((nextPrayer as any)._raw) : "..."}
-                </p>
-                <p className="text-text-tertiary text-xs">{countdown}{locationName ? ` · ${locationName}` : ""}</p>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="h-px bg-divider my-3" />
-
-            {/* All Prayer Times */}
-            <div className="grid grid-cols-6 gap-1">
-              {prayerList.map((prayer) => {
-                const Icon = prayer.icon;
-                return (
-                  <div
-                    key={prayer.name}
-                    className={`flex flex-col items-center gap-1 py-2 rounded-xl transition-all ${
-                      prayer.isNext
-                        ? "bg-primary/8"
-                        : prayer.passed
-                          ? "opacity-40"
-                          : ""
-                    }`}
-                  >
-                    <Icon
-                      size={15}
-                      className={prayer.isNext ? "text-primary" : "text-text-tertiary"}
-                    />
-                    <span className="text-[10px] text-text-secondary">{prayer.name}</span>
-                    <span
-                      className={`text-[11px] tabular-nums ${
-                        prayer.isNext ? "text-primary" : "text-text-primary"
-                      }`}
-                      style={{ fontWeight: prayer.isNext ? 600 : 400 }}
-                    >
-                      {prayer.time}
-                    </span>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full skeleton" />
+                      <div className="space-y-1.5">
+                        <div className="h-3 w-16 skeleton rounded" />
+                        <div className="h-4 w-12 skeleton rounded" />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5 flex flex-col items-end">
+                      <div className="h-7 w-20 skeleton rounded" />
+                      <div className="h-3 w-14 skeleton rounded" />
+                    </div>
                   </div>
-                );
-              })}
+                  <div className="h-px bg-divider my-3" />
+                  <div className="grid grid-cols-6 gap-1">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <div key={i} className="flex flex-col items-center gap-1 py-2">
+                        <div className="w-4 h-4 skeleton rounded-full" />
+                        <div className="h-2.5 w-8 skeleton rounded" />
+                        <div className="h-3 w-10 skeleton rounded" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        {(() => { const Icon = nextPrayer?.icon || Sun; return <Icon size={16} className="text-primary" />; })()}
+                      </div>
+                      <div>
+                        <p className="text-text-secondary text-xs">الصلاة القادمة</p>
+                        <p className="text-text-primary text-sm" style={{ fontWeight: 600 }}>{nextPrayer?.name || "العصر"}</p>
+                      </div>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-2xl text-primary font-['Cairo'] tabular-nums" style={{ fontWeight: 700 }}>
+                        {nextPrayer ? formatTimeArabicWithPeriod((nextPrayer as any)._raw) : "..."}
+                      </p>
+                      <p className="text-text-tertiary text-xs">{countdown}</p>
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="h-px bg-divider my-3" />
+
+                  {/* All Prayer Times */}
+                  <div className="grid grid-cols-6 gap-1">
+                    {prayerList.map((prayer) => {
+                      const Icon = prayer.icon;
+                      return (
+                        <div
+                          key={prayer.name}
+                          className={`flex flex-col items-center gap-1 py-2 rounded-xl transition-all ${
+                            prayer.isNext
+                              ? "bg-primary/8"
+                              : prayer.passed
+                                ? "opacity-40"
+                                : ""
+                          }`}
+                        >
+                          <Icon
+                            size={15}
+                            className={prayer.isNext ? "text-primary" : "text-text-tertiary"}
+                          />
+                          <span className="text-[10px] text-text-secondary">{prayer.name}</span>
+                          <span
+                            className={`text-[11px] tabular-nums ${
+                              prayer.isNext ? "text-primary" : "text-text-primary"
+                            }`}
+                            style={{ fontWeight: prayer.isNext ? 600 : 400 }}
+                          >
+                            {prayer.time}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
-            </>
-            )}
-          </div>
+          )}
         </div>
       </FadeIn>
 
@@ -467,7 +587,7 @@ export function HomeScreen() {
 
       {/* Daily Dhikr Card */}
       <FadeIn delay={0.24}>
-        <div className="px-4 mt-6 mb-6">
+        <div className="px-4 mt-6">
           <div className="bg-secondary rounded-2xl p-5">
             <p className="text-text-primary text-right leading-relaxed font-['Amiri'] text-lg" style={{ lineHeight: '2.1' }}>
               «اللهم صلّ وسلم على سيدنا محمد صلاة تهب لنا بها أكمل المراد وفوق المراد، في دار الدنيا ودار المعاد، وعلى آله وصحبه وبارك وسلم عدد ما علمت وزنة ما علمت وملء ما علمت»
@@ -475,6 +595,107 @@ export function HomeScreen() {
           </div>
         </div>
       </FadeIn>
+
+      {/* Location Search Bottom Sheet */}
+      <AnimatePresence>
+        {showLocationSheet && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/40 z-[60]"
+              onClick={() => setShowLocationSheet(false)}
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed bottom-0 left-0 right-0 z-[70] bg-background rounded-t-3xl max-h-[80vh] flex flex-col"
+            >
+              <div className="p-6 flex-1 overflow-y-auto">
+                <div className="w-12 h-1.5 bg-divider rounded-full mx-auto mb-4" />
+                <div className="relative mb-6 mt-1">
+                  <button onClick={() => setShowLocationSheet(false)} className="absolute right-0 top-0 p-1 text-text-tertiary">
+                    <X size={20} />
+                  </button>
+                  <h2 className="font-['Cairo'] font-bold text-text-primary text-lg text-center mt-2">
+                    اختر مدينتك
+                  </h2>
+                  <p className="text-text-tertiary text-sm text-center mt-1 font-['Cairo']">
+                    ابحث باللغة العربية أو الإنجليزية
+                  </p>
+                </div>
+
+                <div className="relative mb-6">
+                  <input
+                    placeholder="مثال: القاهرة أو Cairo"
+                    value={citySearch}
+                    onChange={(e) => {
+                      setCitySearch(e.target.value);
+                      if (searchTimeout.current) clearTimeout(searchTimeout.current);
+                      searchTimeout.current = setTimeout(() => {
+                        searchCities(e.target.value);
+                      }, 400);
+                    }}
+                    className="w-full bg-secondary rounded-xl pl-10 pr-10 py-3 text-right font-['Cairo'] outline-none border border-divider/40 focus:border-primary/50 transition-colors"
+                    dir="rtl"
+                    autoFocus
+                  />
+                  <Search size={18} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-tertiary" />
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                    {searchLoading && <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />}
+                  </div>
+                </div>
+
+                {citySearch.length < 2 && (
+                  <div className="mb-4">
+                    <p className="text-sm font-['Cairo'] text-text-secondary mb-3 text-right">المدن الشائعة</p>
+                    <div className="flex flex-wrap gap-2 justify-end" dir="rtl">
+                      {popularCities.map(city => (
+                        <button
+                          key={city.name}
+                          onClick={() => selectCity(city)}
+                          className="bg-secondary border border-divider rounded-full px-4 py-1.5 text-sm font-['Cairo'] text-text-primary transition-colors active:bg-divider"
+                        >
+                          {city.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {citySearch.length >= 2 && (
+                  <div className="flex flex-col">
+                    {cityResults.length > 0 ? (
+                      cityResults.map((result, i) => (
+                        <button
+                          key={i}
+                          onClick={() => selectCity(result)}
+                          className="w-full text-right px-2 py-3 border-b border-divider/40 active:bg-secondary"
+                        >
+                          <p className="font-['Cairo'] font-semibold text-text-primary text-sm">
+                            {result.displayName}
+                          </p>
+                          <p className="font-['Cairo'] text-text-tertiary text-xs mt-0.5">
+                            {result.name}
+                          </p>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="text-center text-text-tertiary text-sm py-8 font-['Cairo']">
+                        لا توجد نتائج، جرب اسماً آخر
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

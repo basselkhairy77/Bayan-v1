@@ -112,6 +112,32 @@
   --color-primary-dark: var(--primary-dark);
 }
 
+@layer utilities {
+  .skeleton {
+    @apply bg-secondary relative overflow-hidden;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 translate-x-full;
+    background: linear-gradient(
+      -90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.4) 50%,
+      transparent 100%
+    );
+    animation: shimmer-rtl 1.5s infinite linear;
+  }
+}
+
+@keyframes shimmer-rtl {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

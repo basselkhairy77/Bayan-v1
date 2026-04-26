@@ -1,4 +1,4 @@
-import { Outlet, useLocation, useNavigate } from "react-router";
+import { Outlet, useLocation, useNavigate, useOutlet } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { useCallback } from "react";
 import {
@@ -134,27 +134,15 @@ function BottomNav({
   );
 }
 
-// Smooth fade + gentle lift
-const pageVariants = {
-  initial: { opacity: 0 },
-  animate: { opacity: 1 },
-  exit: { opacity: 0 },
-};
-
-const pageTransition = {
-  duration: 0.4,
-  ease: [0.22, 1, 0.36, 1],
-};
-
-// Detail screens get a slightly different feel — slide up from below
-const detailVariants = {
-  initial: { opacity: 0, y: 30 },
+// Shared animation for all screens
+const screenVariants = {
+  initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0 },
+  exit: { opacity: 0, y: -20 },
 };
 
-const detailTransition = {
-  duration: 0.45,
+const screenTransition = {
+  duration: 0.3,
   ease: [0.22, 1, 0.36, 1],
 };
 
@@ -169,12 +157,14 @@ export function Layout() {
 function LayoutInner() {
   const location = useLocation();
   const navigate = useNavigate();
+  const outlet = useOutlet();
   const { isMenuOpen, closeMenu } = useMenu();
 
   const isReadingScreen = location.pathname.startsWith("/quran/");
   const isDetailScreen = location.pathname.startsWith("/adhkar/");
   const isSunnahScreen = location.pathname === "/sunnah";
-  const isSubScreen = isReadingScreen || isDetailScreen || isSunnahScreen;
+  const isPrayerTrackerScreen = location.pathname === "/prayer-tracker";
+  const isSubScreen = isReadingScreen || isDetailScreen || isSunnahScreen || isPrayerTrackerScreen;
 
   const handleNavigate = useCallback(
     (path: string) => {
@@ -183,51 +173,41 @@ function LayoutInner() {
     [navigate]
   );
 
-  if (isSubScreen) {
-    return (
-      <div
-        dir="rtl"
-        className="min-h-screen bg-background flex flex-col max-w-md mx-auto relative overflow-hidden"
-      >
-        <AnimatePresence initial={false}>
-          <motion.div
-            key={location.pathname}
-            className="absolute inset-0 flex flex-col overflow-y-auto"
-            variants={detailVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={detailTransition}
-          >
-            <Outlet />
-          </motion.div>
-        </AnimatePresence>
-        <AppMenu isOpen={isMenuOpen} onClose={closeMenu} />
-      </div>
-    );
-  }
-
   return (
     <div
       dir="rtl"
       className="min-h-screen bg-background flex flex-col max-w-md mx-auto relative overflow-hidden"
     >
       <div className="flex-1 overflow-hidden relative">
-        <AnimatePresence initial={false}>
+        <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}
-            className="absolute inset-0 overflow-y-auto pb-24"
-            variants={pageVariants}
+            className={`absolute inset-0 overflow-y-auto ${!isSubScreen ? 'pb-24' : 'flex flex-col'}`}
+            variants={screenVariants}
             initial="initial"
             animate="animate"
             exit="exit"
-            transition={pageTransition}
+            transition={screenTransition}
           >
-            <Outlet />
+            {outlet}
           </motion.div>
         </AnimatePresence>
       </div>
-      <BottomNav onNavigate={handleNavigate} />
+      
+      <AnimatePresence>
+        {!isSubScreen && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            transition={{ duration: 0.3 }}
+            className="relative z-50"
+          >
+            <BottomNav onNavigate={handleNavigate} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
       <AppMenu isOpen={isMenuOpen} onClose={closeMenu} />
     </div>
   );

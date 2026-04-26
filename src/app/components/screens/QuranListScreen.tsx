@@ -181,15 +181,15 @@ export function QuranListScreen() {
           {loading ? (
             <div className="flex flex-col gap-1">
               {Array.from({ length: 10 }).map((_, i) => (
-                <div key={i} className="flex items-center justify-between py-3.5 border-b border-divider/60 animate-pulse" dir="rtl">
+                <div key={i} className="flex items-center justify-between py-3.5 border-b border-divider/60" dir="rtl">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-secondary" />
+                    <div className="w-9 h-9 rounded-lg skeleton" />
                     <div className="space-y-2">
-                      <div className="h-4 w-24 bg-secondary rounded" />
-                      <div className="h-3 w-16 bg-secondary rounded" />
+                      <div className="h-4 w-24 skeleton rounded" />
+                      <div className="h-3 w-16 skeleton rounded" />
                     </div>
                   </div>
-                  <div className="w-4 h-4 bg-secondary rounded" />
+                  <div className="w-4 h-4 skeleton rounded" />
                 </div>
               ))}
             </div>

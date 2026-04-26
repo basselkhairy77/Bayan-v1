@@ -1,6 +1,6 @@
 import { useParams, useNavigate, useSearchParams } from "react-router";
 import React from "react";
-import { ArrowLeft, Search, Bookmark, ChevronLeft, ChevronRight, RefreshCw, FileText, Image as ImageIcon, Loader2, BookOpen, Copy, Mic, Play, Pause } from "lucide-react";
+import { ArrowLeft, Search, Bookmark, ChevronLeft, ChevronRight, RefreshCw, FileText, Image as ImageIcon, Loader2, BookOpen, Copy, Mic, Play, Pause, X } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { FadeIn } from "../ui/FadeIn";
 
@@ -654,8 +654,8 @@ export function QuranReadingScreen() {
             {loading ? (
               <div className="flex flex-col gap-4">
                 {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="animate-pulse flex flex-col items-center gap-2">
-                    <div className="h-5 bg-secondary rounded w-3/4" />
+                  <div key={i} className="flex flex-col items-center gap-2">
+                    <div className="h-5 skeleton rounded w-3/4" />
                   </div>
                 ))}
               </div>
@@ -688,8 +688,8 @@ export function QuranReadingScreen() {
             {loading ? (
               <div className="flex flex-col gap-4">
                 {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="animate-pulse flex flex-col items-center gap-2">
-                    <div className="h-5 bg-secondary rounded w-3/4" />
+                  <div key={i} className="flex flex-col items-center gap-2">
+                    <div className="h-5 skeleton rounded w-3/4" />
                   </div>
                 ))}
               </div>
@@ -830,12 +830,17 @@ export function QuranReadingScreen() {
           />
           {/* Sheet */}
           <div
-            className={`relative w-full max-w-md bg-background rounded-t-2xl p-6 pointer-events-auto transition-transform duration-300 ease-in-out ${isJumpSheetVisible ? "translate-y-0" : "translate-y-full"}`}
+            className={`relative w-full max-w-md bg-background rounded-t-3xl p-6 pointer-events-auto transition-transform duration-300 ease-in-out ${isJumpSheetVisible ? "translate-y-0" : "translate-y-full"}`}
           >
-            <div className="flex justify-center mb-4">
-              <div className="w-10 h-1 rounded-full bg-divider" />
+            <div className="w-12 h-1.5 bg-divider rounded-full mx-auto mb-4" />
+            <div className="relative mb-6 mt-1">
+              <button onClick={closeJumpSheet} className="absolute right-0 top-0 p-1 text-text-tertiary">
+                <X size={20} />
+              </button>
+              <h2 className="font-['Cairo'] font-bold text-text-primary text-lg text-center mt-2">
+                انتقل إلى صفحة
+              </h2>
             </div>
-            <h3 className="text-center text-text-primary font-['Cairo'] mb-4">انتقل إلى صفحة</h3>
             <input
               ref={jumpInputRef}
               type="number"
@@ -876,16 +881,17 @@ export function QuranReadingScreen() {
             style={{ maxHeight: "70vh" }}
           >
             {/* Handle */}
-            <div className="flex justify-center pt-3 pb-4">
-              <div className="w-10 h-1 rounded-full bg-divider" />
-            </div>
+            <div className="w-12 h-1.5 bg-divider rounded-full mx-auto mt-4 mb-4" />
 
             {/* Header */}
-            <div className="px-6 pb-4 text-center border-b border-divider/40">
-              <p className="text-xs text-text-tertiary mb-1">
+            <div className="relative mb-6 mt-1 px-6 border-b border-divider/40 pb-4">
+              <button onClick={closeAyahSheet} className="absolute right-6 top-0 p-1 text-text-tertiary">
+                <X size={20} />
+              </button>
+              <h2 className="font-['Cairo'] font-bold text-text-primary text-sm text-center mt-2">
                 سورة {cleanSurahName(selectedAyah.surah.name)} - آية {toArabicNum(selectedAyah.numberInSurah)}
-              </p>
-              <p className="text-sm text-text-secondary font-['Amiri'] leading-relaxed" dir="rtl">
+              </h2>
+              <p className="text-text-tertiary text-xs text-center mt-1 font-['Amiri'] leading-relaxed" dir="rtl">
                 {selectedAyah.text.substring(0, 30)}{selectedAyah.text.length > 30 ? "..." : ""}
               </p>
             </div>
@@ -928,7 +934,7 @@ export function QuranReadingScreen() {
                   </div>
                 )}
               </div>
-            ) : tafseer.text ? (
+            ) : tafseer.text || tafseer.loading ? (
               /* Tafseer View */
               <div className="px-6 py-6">
                 <button
@@ -938,9 +944,19 @@ export function QuranReadingScreen() {
                   ← العودة
                 </button>
                 <h4 className="text-text-primary font-['Cairo'] text-center mb-4">التفسير</h4>
-                <p className="text-text-secondary font-['Cairo'] leading-relaxed text-right" dir="rtl">
-                  {tafseer.text}
-                </p>
+                {tafseer.loading ? (
+                  <div className="space-y-3 mt-4">
+                    <div className="h-4 skeleton rounded w-full" />
+                    <div className="h-4 skeleton rounded w-11/12 ml-auto" />
+                    <div className="h-4 skeleton rounded w-4/5 ml-auto" />
+                    <div className="h-4 skeleton rounded w-5/6 ml-auto" />
+                    <div className="h-4 skeleton rounded w-3/4 ml-auto" />
+                  </div>
+                ) : (
+                  <p className="text-text-secondary font-['Cairo'] leading-relaxed text-right" dir="rtl">
+                    {tafseer.text}
+                  </p>
+                )}
               </div>
             ) : (
               /* Options List */
@@ -980,13 +996,9 @@ export function QuranReadingScreen() {
                   onClick={fetchTafseer}
                   className="w-full flex items-center gap-3 px-6 py-3.5 border-b border-divider/40 active:bg-secondary/30 transition-colors"
                 >
-                  {tafseer.loading ? (
-                    <Loader2 size={20} className="animate-spin" style={{ color: "#7C5C42" }} />
-                  ) : (
-                    <BookOpen size={20} style={{ color: "#7C5C42" }} />
-                  )}
+                  <BookOpen size={20} style={{ color: "#7C5C42" }} />
                   <span className="flex-1 text-right text-text-primary font-['Cairo']">
-                    {tafseer.loading ? "جاري التحميل..." : "تفسير"}
+                    تفسير
                   </span>
                 </button>
 
