@@ -4,6 +4,7 @@ import { router } from "./routes";
 import { SplashScreen } from "./components/screens/SplashScreen";
 import { AnimatePresence } from "motion/react";
 import { GetStartedScreen } from "./components/screens/GetStartedScreen";
+import { PWASetup } from "./components/PWASetup";
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -11,7 +12,8 @@ export default function App() {
   const [showGetStarted, setShowGetStarted] = useState(true);
 
   return (
-    <>
+    <div className="font-['Cairo'] text-text-primary antialiased bg-background min-h-screen w-full relative">
+      <PWASetup />
       <RouterProvider router={router} />
       <AnimatePresence>
         {showGetStarted && (
@@ -31,6 +33,6 @@ export default function App() {
           />
         )}
       </AnimatePresence>
-    </>
+    </div>
   );
 }

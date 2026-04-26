@@ -199,7 +199,7 @@ export function HomeScreen() {
       setLocationStatus('idle');
     }
 
-    const tickInterval = setInterval(() => setTick((t) => t + 1), 60 * 1000);
+    const tickInterval = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(tickInterval);
   }, []);
 
@@ -292,9 +292,9 @@ export function HomeScreen() {
     fetchPrayerTimes(city.lat, city.lng);
   };
 
-  const { prayerList, nextPrayer, countdown } = useMemo(() => {
+  const { prayerList, nextPrayer } = useMemo(() => {
     void tick;
-    if (!prayerTimes) return { prayerList: [] as PrayerTimeEntry[], nextPrayer: null as PrayerTimeEntry | null, countdown: "" };
+    if (!prayerTimes) return { prayerList: [] as PrayerTimeEntry[], nextPrayer: null as PrayerTimeEntry | null };
 
     const now = new Date();
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -327,8 +327,34 @@ export function HomeScreen() {
       cd = hrs > 0 ? `بعد ${toArabicNum(hrs)} س ${toArabicNum(mins)} د` : `بعد ${toArabicNum(mins)} ��`;
     }
 
-    return { prayerList: list, nextPrayer: next, countdown: cd };
+    return { prayerList: list, nextPrayer: next };
   }, [prayerTimes, tick]);
+
+  const getCountdown = (prayerTime24: string): string => {
+    const now = new Date();
+    const [hoursStr, minutesStr] = prayerTime24.split(':');
+    const hours = parseInt(hoursStr, 10);
+    const minutes = parseInt(minutesStr, 10);
+    
+    const prayer = new Date();
+    prayer.setHours(hours, minutes, 0, 0);
+    
+    if (prayer <= now) prayer.setDate(prayer.getDate() + 1);
+    
+    const diffMs = prayer.getTime() - now.getTime();
+    const totalSeconds = Math.floor(diffMs / 1000);
+    
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    
+    const parts = [];
+    if (h > 0) parts.push(`${toArabicNum(h)} س`);
+    if (m > 0) parts.push(`${toArabicNum(m)} د`);
+    if (s > 0 || parts.length === 0) parts.push(`${toArabicNum(s)} ث`);
+    
+    return `بعد ${parts.join(' ')}`;
+  };
 
   return (
     <div className="min-h-screen pb-6">
@@ -446,7 +472,9 @@ export function HomeScreen() {
                       <p className="text-2xl text-primary font-['Cairo'] tabular-nums" style={{ fontWeight: 700 }}>
                         {nextPrayer ? formatTimeArabicWithPeriod((nextPrayer as any)._raw) : "..."}
                       </p>
-                      <p className="text-text-tertiary text-xs">{countdown}</p>
+                      <p className="text-xs text-text-secondary font-['Cairo'] mt-0.5">
+                        {nextPrayer ? getCountdown((nextPrayer as any)._raw) : ""}
+                      </p>
                     </div>
                   </div>
 

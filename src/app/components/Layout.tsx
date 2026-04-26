@@ -176,7 +176,7 @@ function LayoutInner() {
   return (
     <div
       dir="rtl"
-      className="min-h-screen bg-background flex flex-col max-w-md mx-auto relative overflow-hidden"
+      className="font-['Cairo'] min-h-screen bg-background flex flex-col max-w-md mx-auto relative overflow-hidden"
     >
       <div className="flex-1 overflow-hidden relative">
         <AnimatePresence mode="wait">
